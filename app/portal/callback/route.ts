@@ -14,7 +14,7 @@ export async function GET(request: Request) {
   const token = url.searchParams.get("token");
 
   if (!token) {
-    return NextResponse.redirect(new URL("/?launch=missing", url.origin));
+    return NextResponse.redirect(appRedirectURL("/?launch=missing", url));
   }
 
   try {
@@ -28,11 +28,21 @@ export async function GET(request: Request) {
       maxAge: 60 * 60 * 8,
       path: "/",
     });
-    return NextResponse.redirect(new URL("/", url.origin));
+    return NextResponse.redirect(appRedirectURL("/", url));
   } catch (error) {
     console.warn("Portal launch rejected.", {
       reason: error instanceof Error ? error.message : "Unknown launch verification error.",
     });
-    return NextResponse.redirect(new URL("/?launch=invalid", url.origin));
+    return NextResponse.redirect(appRedirectURL("/?launch=invalid", url));
   }
+}
+
+function appRedirectURL(path: string, requestURL: URL) {
+  const publicURL = process.env.APP_PUBLIC_URL ?? railwayPublicURL() ?? requestURL.origin;
+  return new URL(path, publicURL);
+}
+
+function railwayPublicURL() {
+  const domain = process.env.RAILWAY_PUBLIC_DOMAIN || process.env.RAILWAY_STATIC_URL;
+  return domain ? `https://${domain}` : undefined;
 }

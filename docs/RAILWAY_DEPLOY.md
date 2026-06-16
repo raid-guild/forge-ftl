@@ -33,6 +33,7 @@ The app creates the database and `scores` table on first request to `/api/scores
 ## Required Environment Variables
 
 ```txt
+APP_PUBLIC_URL=https://forge-ftl-production.up.railway.app
 PORTAL_MODULE_LAUNCH_SECRET=long-random-shared-secret
 PORTAL_MODULE_AUDIENCE=fantasy-trail-legends
 PORTAL_MODULE_SLUG=fantasy-trail-legends
@@ -41,6 +42,10 @@ PORTAL_MODULE_ALLOWED_ISSUERS=https://portal.raidguild.org,https://raida.raidgui
 SESSION_SECRET=separate-long-random-cookie-secret
 SQLITE_PATH=/data/fantasy-trail-legends.sqlite
 ```
+
+`APP_PUBLIC_URL` keeps callback redirects on the public Railway URL. Without it,
+some Railway/Next request contexts may report an internal `localhost:8080`
+origin.
 
 `PORTAL_MODULE_LAUNCH_SECRET` must match the secret configured in the Portal
 module record via `launchSecretEnvKey`.

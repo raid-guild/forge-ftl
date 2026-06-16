@@ -28,6 +28,7 @@ enabled: true
 The game expects:
 
 ```txt
+APP_PUBLIC_URL=https://forge-ftl-production.up.railway.app
 PORTAL_MODULE_LAUNCH_SECRET=shared-secret-from-portal
 PORTAL_MODULE_AUDIENCE=fantasy-trail-legends
 PORTAL_MODULE_SLUG=fantasy-trail-legends
@@ -39,6 +40,8 @@ SQLITE_PATH=/data/fantasy-trail-legends.sqlite
 
 `SQLITE_PATH` should point at a Railway persistent volume path in production.
 If omitted, local development uses `./data/fantasy-trail-legends.sqlite`.
+`APP_PUBLIC_URL` keeps callback redirects on the public app URL when the runtime
+reports an internal host.
 `PORTAL_MODULE_ALLOWED_ISSUERS` is optional, but useful when the same deployed
 game is launched from both local Portal development and a deployed Portal host.
 
