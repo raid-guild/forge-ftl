@@ -46,6 +46,15 @@ export interface FloatText {
   ttl: number;
 }
 
+export interface CombatEffect {
+  id: number;
+  kind: "slash" | "spark" | "music" | "kick" | "repair" | "aura-hit";
+  side: "party" | "enemy" | "center";
+  sourceId?: HeroId;
+  targetId?: string;
+  ttl: number;
+}
+
 export interface RoomEvent {
   type: Exclude<RoomType, "combat">;
   title: string;
@@ -69,7 +78,9 @@ export interface GameState {
   enemies: Enemy[];
   roomEvent: RoomEvent | null;
   floats: FloatText[];
+  effects: CombatEffect[];
   nextFloatId: number;
+  nextEffectId: number;
   log: string[];
   upgrades: {
     attackPower: number;
@@ -174,7 +185,9 @@ export function createInitialState(): GameState {
     enemies: [],
     roomEvent: null,
     floats: [],
+    effects: [],
     nextFloatId: 1,
+    nextEffectId: 1,
     log: ["The caravan waits at the dungeon stairs."],
     upgrades: {
       attackPower: 0,
@@ -243,6 +256,7 @@ function startCombat(state: GameState, floor: number): GameState {
     })),
     enemies,
     floats: [],
+    effects: [],
     log: [`Floor ${floor}: ${encounterName(floor)} blocks the way.`],
   };
 }
@@ -277,6 +291,7 @@ function startEventRoom(state: GameState, floor: number, roomEvent: RoomEvent): 
     roomEvent,
     enemies: [],
     floats: [],
+    effects: [],
     party: state.party.map((hero) => ({
       ...hero,
       hp: Math.min(hero.maxHp, hero.hp + 4),
@@ -392,7 +407,15 @@ function resolveTask(state: GameState, hero: Hero): GameState {
   if (hero.task === "attack") {
     const heroBonus = hero.id === "fighter" ? 3 : hero.id === "donkey" ? -3 : 0;
     const damage = Math.max(1, 8 + state.upgrades.attackPower * 3 + heroBonus);
-    return damageEnemy(clearHeroTask(state, hero.id), hero.targetId, damage, "hit");
+    return damageEnemy(
+      addEffect(clearHeroTask(state, hero.id), attackEffectForHero(hero.id), "enemy", {
+        sourceId: hero.id,
+        targetId: hero.targetId ?? undefined,
+      }),
+      hero.targetId,
+      damage,
+      "hit",
+    );
   }
 
   if (hero.task === "repair-aura") {
@@ -402,11 +425,16 @@ function resolveTask(state: GameState, hero: Hero): GameState {
     const repairBonus = hero.id === "bard" ? 3 : hero.id === "donkey" ? -4 : 0;
     const repaired = Math.max(1, 13 + state.upgrades.repairPower * 5 + repairBonus);
     return clearHeroTask(
-      {
-        ...addFloat(state, `+${repaired} aura`, "center"),
-        mana: Math.max(0, state.mana - AURA_REPAIR_COST),
-        aura: clamp(state.aura + repaired, 0, state.maxAura),
-      },
+      addEffect(
+        {
+          ...addFloat(state, `+${repaired} aura`, "center"),
+          mana: Math.max(0, state.mana - AURA_REPAIR_COST),
+          aura: clamp(state.aura + repaired, 0, state.maxAura),
+        },
+        "repair",
+        "party",
+        { sourceId: hero.id },
+      ),
       hero.id,
     );
   }
@@ -434,7 +462,11 @@ function tickEnemies(state: GameState, dt: number): GameState {
     party = party.map((hero) =>
       hero.id === target?.id ? { ...hero, hp: clamp(hero.hp - hpDamage, 0, hero.maxHp) } : hero,
     );
-    next = addFloat(next, auraBlock > 0 ? `-${auraBlock} aura / -${hpDamage} hp` : `-${hpDamage} hp`, "party");
+    next = addEffect(
+      addFloat(next, auraBlock > 0 ? `-${auraBlock} aura / -${hpDamage} hp` : `-${hpDamage} hp`, "party"),
+      auraBlock > 0 ? "aura-hit" : "slash",
+      auraBlock > 0 ? "center" : "party",
+    );
     return { ...enemy, attackTimer: enemy.attackEvery };
   });
 
@@ -654,6 +686,9 @@ function ageFloats(state: GameState, dt: number): GameState {
     floats: state.floats
       .map((float) => ({ ...float, ttl: float.ttl - dt }))
       .filter((float) => float.ttl > 0),
+    effects: state.effects
+      .map((effect) => ({ ...effect, ttl: effect.ttl - dt }))
+      .filter((effect) => effect.ttl > 0),
   };
 }
 
@@ -667,6 +702,26 @@ function addFloat(state: GameState, text: string, side: FloatText["side"]): Game
 
 function pushLog(state: GameState, line: string): GameState {
   return { ...state, log: [line, ...state.log].slice(0, 5) };
+}
+
+function addEffect(
+  state: GameState,
+  kind: CombatEffect["kind"],
+  side: CombatEffect["side"],
+  options: Pick<CombatEffect, "sourceId" | "targetId"> = {},
+): GameState {
+  return {
+    ...state,
+    effects: [{ id: state.nextEffectId, kind, side, ttl: 0.65, ...options }, ...state.effects].slice(0, 8),
+    nextEffectId: state.nextEffectId + 1,
+  };
+}
+
+function attackEffectForHero(heroId: HeroId): CombatEffect["kind"] {
+  if (heroId === "fighter") return "slash";
+  if (heroId === "wizard") return "spark";
+  if (heroId === "bard") return "music";
+  return "kick";
 }
 
 function firstLivingEnemy(enemies: Enemy[]) {

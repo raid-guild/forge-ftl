@@ -7,6 +7,7 @@ import {
   reducer,
   shopServiceCost,
   upgradeCost,
+  type CombatEffect,
   type Enemy,
   type GameState,
   type HeroId,
@@ -100,14 +101,18 @@ interface RunSummary {
 export default function CaravanGame() {
   const [state, dispatch] = useReducer(reducer, undefined, createInitialState);
   const [screen, setScreen] = useState<Screen>("title");
+  const [combatIntro, setCombatIntro] = useState<{ floor: number; label: string } | null>(null);
   const [session, setSession] = useState<PlayerSession>({ authenticated: false, handle: "Stranger" });
   const [leaderboard, setLeaderboard] = useState<Leaderboard>({ personalBest: null, top: [] });
   const [summary, setSummary] = useState<RunSummary | null>(null);
   const runStartedAt = useRef(0);
   const submittedRun = useRef(false);
+  const combatIntroActive = combatIntro !== null;
+  const combatIntroActiveRef = useRef(false);
 
   useEffect(() => {
     const timer = window.setInterval(() => {
+      if (combatIntroActiveRef.current) return;
       dispatch({ type: "tick", dt: 1 / 12 });
     }, 1000 / 12);
     return () => window.clearInterval(timer);
@@ -116,6 +121,33 @@ export default function CaravanGame() {
   useEffect(() => {
     void refreshShellData();
   }, []);
+
+  useEffect(() => {
+    if (screen !== "playing" || state.phase !== "combat") {
+      combatIntroActiveRef.current = false;
+      setCombatIntro(null);
+      return;
+    }
+
+    combatIntroActiveRef.current = true;
+    setCombatIntro({ floor: state.floor, label: "5" });
+
+    const timers = [
+      window.setTimeout(() => setCombatIntro({ floor: state.floor, label: "4" }), 900),
+      window.setTimeout(() => setCombatIntro({ floor: state.floor, label: "3" }), 1800),
+      window.setTimeout(() => setCombatIntro({ floor: state.floor, label: "2" }), 2700),
+      window.setTimeout(() => setCombatIntro({ floor: state.floor, label: "1" }), 3600),
+      window.setTimeout(() => setCombatIntro({ floor: state.floor, label: "Go" }), 4500),
+      window.setTimeout(() => {
+        combatIntroActiveRef.current = false;
+        setCombatIntro(null);
+      }, 5000),
+    ];
+
+    return () => {
+      timers.forEach(window.clearTimeout);
+    };
+  }, [screen, state.phase, state.floor]);
 
   useEffect(() => {
     if (screen !== "playing" || (state.phase !== "game-over" && state.phase !== "won")) return;
@@ -137,6 +169,7 @@ export default function CaravanGame() {
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (screen !== "playing" || state.phase !== "combat") return;
+      if (combatIntroActiveRef.current) return;
       if (event.metaKey || event.ctrlKey || event.altKey) return;
       if (isEditableTarget(event.target)) return;
 
@@ -239,7 +272,12 @@ export default function CaravanGame() {
       <TopBar state={state} />
       <section className="battlefield" data-phase={state.phase}>
         <PartyPanel state={state} dispatch={dispatch} />
-        <CenterStage state={state} dispatch={dispatch} />
+        <CenterStage
+          state={state}
+          dispatch={dispatch}
+          combatIntro={combatIntro}
+          combatIntroActive={combatIntroActive}
+        />
         <EnemyPanel state={state} dispatch={dispatch} />
       </section>
       <LogPanel lines={state.log} />
@@ -511,9 +549,13 @@ function EnemyCard({
 function CenterStage({
   state,
   dispatch,
+  combatIntro,
+  combatIntroActive,
 }: {
   state: GameState;
   dispatch: React.Dispatch<Parameters<typeof reducer>[1]>;
+  combatIntro: { floor: number; label: string } | null;
+  combatIntroActive: boolean;
 }) {
   const selected = state.party.find((hero) => hero.id === state.selectedHero);
   if (state.phase === "story" || state.phase === "chest") {
@@ -536,7 +578,7 @@ function CenterStage({
 
   return (
     <section className="center-stage">
-      <div className="dungeon-lane">
+      <div className="dungeon-lane" data-intro={combatIntroActive}>
         <div className="battle-status">
           <RouteMap state={state} />
           <div className="resource-bank">
@@ -544,7 +586,7 @@ function CenterStage({
             <Meter label="Mana" value={state.mana} max={state.maxMana} tone="violet" />
           </div>
         </div>
-        <div className="party-line">
+        <div className="party-line" data-intro={combatIntroActive}>
           {state.party.map((hero) => (
             <div className="standing-unit" key={hero.id} data-down={hero.hp <= 0} data-task={hero.task ?? "idle"}>
               <Sprite index={heroSpriteIndex(hero)} sheet={hero.spriteSheet} />
@@ -559,7 +601,9 @@ function CenterStage({
             </span>
           ))}
         </div>
-        <div className="enemy-line">
+        <EffectLayer effects={state.effects} state={state} />
+        {combatIntro && <CombatIntro floor={combatIntro.floor} label={combatIntro.label} />}
+        <div className="enemy-line" data-intro={combatIntroActive}>
           {state.enemies.map((enemy) => (
             <button
               className="standing-unit standing-unit--enemy"
@@ -586,11 +630,13 @@ function CenterStage({
       {state.phase === "combat" && (
         <div className="command-strip">
           <div className="selected-readout">
-            {selected ? `${selected.name} selected` : "Pick a hero"} · A Attack · R Repair · Shift+1-4 target
+            {combatIntroActive
+              ? `Floor ${state.floor}: get ready`
+              : `${selected ? `${selected.name} selected` : "Pick a hero"} · A Attack · R Repair · Shift+1-4 target`}
           </div>
           <div className="task-grid">
             {TASKS.map((task) => (
-              <button key={task} onClick={() => dispatch({ type: "assign", task })}>
+              <button disabled={combatIntroActive} key={task} onClick={() => dispatch({ type: "assign", task })}>
                 <span>{TASK_LABELS[task].label}</span>
                 <kbd className="key-hint">({TASK_HOTKEY_LABELS[task]})</kbd>
               </button>
@@ -609,6 +655,42 @@ function CenterStage({
       )}
     </section>
   );
+}
+
+function CombatIntro({ floor, label }: { floor: number; label: string }) {
+  return (
+    <div className="combat-intro" aria-live="polite">
+      <span>Floor {floor}</span>
+      <strong>{label}</strong>
+    </div>
+  );
+}
+
+function EffectLayer({ effects, state }: { effects: CombatEffect[]; state: GameState }) {
+  if (effects.length === 0) return null;
+  return (
+    <div className="effect-layer" aria-hidden="true">
+      {effects.map((effect) => (
+        <span
+          className={`combat-effect combat-effect--${effect.kind} combat-effect--${effect.side}`}
+          key={effect.id}
+          style={{ "--slot": effectSlot(effect, state) } as CSSProperties}
+        />
+      ))}
+    </div>
+  );
+}
+
+function effectSlot(effect: CombatEffect, state: GameState) {
+  if (effect.side === "enemy") {
+    const targetIndex = state.enemies.findIndex((enemy) => enemy.id === effect.targetId);
+    return Math.max(0, targetIndex);
+  }
+  if (effect.side === "party") {
+    const sourceIndex = state.party.findIndex((hero) => hero.id === effect.sourceId);
+    return Math.max(0, sourceIndex);
+  }
+  return 0;
 }
 
 function EventRoom({
