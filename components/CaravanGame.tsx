@@ -40,6 +40,48 @@ const TASK_HOTKEY_LABELS: Record<Task, string> = {
   "repair-aura": "R",
 };
 const SPECIAL_HOTKEY_LABEL = "S";
+type SoundId =
+  | "attack"
+  | "auraHit"
+  | "error"
+  | "repair"
+  | "select"
+  | "shop"
+  | "special"
+  | "task"
+  | "victory";
+
+const SOUND_PATHS: Record<SoundId, string> = {
+  attack: "/audio/attack-hit.ogg",
+  auraHit: "/audio/aura-hit.ogg",
+  error: "/audio/error.ogg",
+  repair: "/audio/repair-aura.ogg",
+  select: "/audio/ui-select.ogg",
+  shop: "/audio/shop-buy.ogg",
+  special: "/audio/special.ogg",
+  task: "/audio/task-assign.ogg",
+  victory: "/audio/victory.ogg",
+};
+
+const SOUND_VOLUME: Record<SoundId, number> = {
+  attack: 0.26,
+  auraHit: 0.22,
+  error: 0.25,
+  repair: 0.18,
+  select: 0.18,
+  shop: 0.24,
+  special: 0.28,
+  task: 0.2,
+  victory: 0.32,
+};
+
+const SOUND_COOLDOWN_MS: Partial<Record<SoundId, number>> = {
+  attack: 90,
+  auraHit: 140,
+  repair: 300,
+  special: 700,
+};
+
 const HERO_NAMES: Record<HeroId, string> = {
   fighter: "Fighter",
   wizard: "Wizard",
@@ -133,9 +175,18 @@ export default function CaravanGame() {
   const [screen, setScreen] = useState<Screen>("title");
   const [combatIntro, setCombatIntro] = useState<{ floor: number; label: string } | null>(null);
   const [specialCinematic, setSpecialCinematic] = useState<SpecialCinematic | null>(null);
+  const [sfxEnabled, setSfxEnabled] = useState(true);
+  const [sfxLoaded, setSfxLoaded] = useState(false);
+  const [musicEnabled, setMusicEnabled] = useState(true);
+  const [musicLoaded, setMusicLoaded] = useState(false);
   const [session, setSession] = useState<PlayerSession>({ authenticated: false, handle: "Stranger" });
   const [leaderboard, setLeaderboard] = useState<Leaderboard>({ personalBest: null, top: [] });
   const [summary, setSummary] = useState<RunSummary | null>(null);
+  const audioRefs = useRef<Partial<Record<SoundId, HTMLAudioElement>>>({});
+  const musicRef = useRef<HTMLAudioElement | null>(null);
+  const lastEffectId = useRef(0);
+  const lastPhase = useRef(state.phase);
+  const lastSoundAt = useRef<Partial<Record<SoundId, number>>>({});
   const runStartedAt = useRef(0);
   const submittedRun = useRef(false);
   const combatIntroActive = combatIntro !== null;
@@ -154,6 +205,84 @@ export default function CaravanGame() {
   useEffect(() => {
     void refreshShellData();
   }, []);
+
+  useEffect(() => {
+    setSfxEnabled(window.localStorage.getItem("ftl:sfx") !== "off");
+    setMusicEnabled(window.localStorage.getItem("ftl:music") !== "off");
+    setSfxLoaded(true);
+    setMusicLoaded(true);
+  }, []);
+
+  useEffect(() => {
+    if (!sfxLoaded) return;
+    window.localStorage.setItem("ftl:sfx", sfxEnabled ? "on" : "off");
+  }, [sfxEnabled, sfxLoaded]);
+
+  useEffect(() => {
+    if (!musicLoaded) return;
+    window.localStorage.setItem("ftl:music", musicEnabled ? "on" : "off");
+    if (!musicEnabled) {
+      musicRef.current?.pause();
+    }
+  }, [musicEnabled, musicLoaded]);
+
+  const playSfx = (sound: SoundId) => {
+    if (!sfxEnabled || typeof window === "undefined") return;
+    const now = window.performance.now();
+    const cooldown = SOUND_COOLDOWN_MS[sound] ?? 0;
+    if (cooldown > 0 && now - (lastSoundAt.current[sound] ?? 0) < cooldown) return;
+    lastSoundAt.current[sound] = now;
+
+    const audio = audioRefs.current[sound] ?? new Audio(SOUND_PATHS[sound]);
+    audioRefs.current[sound] = audio;
+    audio.volume = SOUND_VOLUME[sound];
+    audio.currentTime = 0;
+    void audio.play().catch(() => undefined);
+  };
+
+  const toggleSfx = () => setSfxEnabled((enabled) => !enabled);
+
+  const playMusic = (force = false) => {
+    if ((!musicEnabled && !force) || typeof window === "undefined") return;
+    const music = musicRef.current ?? new Audio("/audio/ftl-bg.mp3");
+    musicRef.current = music;
+    music.loop = true;
+    music.volume = 0.12;
+    void music.play().catch(() => undefined);
+  };
+
+  const toggleMusic = () => {
+    setMusicEnabled((enabled) => {
+      const next = !enabled;
+      if (next) window.setTimeout(() => playMusic(true), 0);
+      else musicRef.current?.pause();
+      return next;
+    });
+  };
+
+  useEffect(() => {
+    if (screen !== "playing") return;
+    const newEffects = state.effects.filter((effect) => effect.id > lastEffectId.current);
+    if (state.effects.length > 0) {
+      lastEffectId.current = Math.max(lastEffectId.current, ...state.effects.map((effect) => effect.id));
+    }
+
+    for (const effect of newEffects) {
+      if (effect.kind === "repair") playSfx("repair");
+      if (effect.kind === "aura-hit") playSfx("auraHit");
+      if (effect.kind === "special") playSfx("special");
+      if (effect.kind === "slash" || effect.kind === "spark" || effect.kind === "music" || effect.kind === "kick") {
+        playSfx("attack");
+      }
+    }
+  }, [screen, state.effects]);
+
+  useEffect(() => {
+    if (state.phase === lastPhase.current) return;
+    if (state.phase === "won") playSfx("victory");
+    if (state.phase === "game-over") playSfx("error");
+    lastPhase.current = state.phase;
+  }, [state.phase]);
 
   useEffect(() => {
     if (screen !== "playing" || state.phase !== "combat") {
@@ -215,6 +344,7 @@ export default function CaravanGame() {
         const enemy = state.enemies.filter((target) => target.hp > 0)[Number(key) - 1];
         if (enemy) {
           event.preventDefault();
+          playSfx("select");
           dispatch({ type: "focus-enemy", enemyId: enemy.id });
         }
         return;
@@ -223,18 +353,21 @@ export default function CaravanGame() {
       const heroId = HERO_HOTKEYS[key];
       if (heroId) {
         event.preventDefault();
+        playSfx("select");
         dispatch({ type: "select-hero", heroId });
         return;
       }
 
       if (key === "a") {
         event.preventDefault();
+        playSfx("task");
         dispatch({ type: "assign", task: "attack" });
         return;
       }
 
       if (key === "r") {
         event.preventDefault();
+        playSfx("task");
         dispatch({ type: "assign", task: "repair-aura" });
         return;
       }
@@ -298,6 +431,10 @@ export default function CaravanGame() {
   };
 
   const beginRun = () => {
+    playSfx("select");
+    playMusic();
+    lastEffectId.current = 0;
+    lastPhase.current = "ready";
     submittedRun.current = false;
     setSummary(null);
     runStartedAt.current = Date.now();
@@ -310,14 +447,35 @@ export default function CaravanGame() {
     return (
       <TitleScreen
         leaderboard={leaderboard}
-        onStart={() => setScreen("kickoff")}
+        onStart={() => {
+          playSfx("select");
+          playMusic();
+          setScreen("kickoff");
+        }}
+        musicEnabled={musicEnabled}
+        onToggleMusic={toggleMusic}
+        onToggleSfx={toggleSfx}
         session={session}
+        sfxEnabled={sfxEnabled}
       />
     );
   }
 
   if (screen === "kickoff") {
-    return <KickoffScreen onBack={() => setScreen("title")} onStart={beginRun} session={session} />;
+    return (
+      <KickoffScreen
+        onBack={() => {
+          playSfx("select");
+          setScreen("title");
+        }}
+        onStart={beginRun}
+        musicEnabled={musicEnabled}
+        onToggleMusic={toggleMusic}
+        onToggleSfx={toggleSfx}
+        session={session}
+        sfxEnabled={sfxEnabled}
+      />
+    );
   }
 
   if (screen === "recap" && summary) {
@@ -325,12 +483,17 @@ export default function CaravanGame() {
       <RecapScreen
         leaderboard={leaderboard}
         onTitle={() => {
+          playSfx("select");
           dispatch({ type: "restart" });
           setScreen("title");
           void refreshShellData();
         }}
+        musicEnabled={musicEnabled}
+        onToggleMusic={toggleMusic}
+        onToggleSfx={toggleSfx}
         summary={summary}
         session={session}
+        sfxEnabled={sfxEnabled}
       />
     );
   }
@@ -339,16 +502,17 @@ export default function CaravanGame() {
     <main className="game-shell">
       <TopBar state={state} />
       <section className="battlefield" data-phase={state.phase}>
-        <PartyPanel state={state} dispatch={dispatch} />
+        <PartyPanel state={state} dispatch={dispatch} onCommandSound={playSfx} />
         <CenterStage
           state={state}
           dispatch={dispatch}
           combatIntro={combatIntro}
           combatIntroActive={combatIntroActive}
+          onCommandSound={playSfx}
           onSpecial={triggerSpecial}
           specialCinematic={specialCinematic}
         />
-        <EnemyPanel state={state} dispatch={dispatch} />
+        <EnemyPanel state={state} dispatch={dispatch} onCommandSound={playSfx} />
       </section>
       <LogPanel lines={state.log} />
     </main>
@@ -363,12 +527,20 @@ function isEditableTarget(target: EventTarget | null) {
 
 function TitleScreen({
   leaderboard,
+  musicEnabled,
   onStart,
+  onToggleMusic,
+  onToggleSfx,
   session,
+  sfxEnabled,
 }: {
   leaderboard: Leaderboard;
+  musicEnabled: boolean;
   onStart: () => void;
+  onToggleMusic: () => void;
+  onToggleSfx: () => void;
   session: PlayerSession;
+  sfxEnabled: boolean;
 }) {
   return (
     <main className="title-shell">
@@ -382,6 +554,12 @@ function TitleScreen({
         <button className="primary-command title-start" onClick={onStart}>
           Start Run
         </button>
+        <AudioToggles
+          musicEnabled={musicEnabled}
+          onToggleMusic={onToggleMusic}
+          onToggleSfx={onToggleSfx}
+          sfxEnabled={sfxEnabled}
+        />
         <p className="title-session">
           {session.authenticated ? `Ranked as ${session.handle}` : "Anonymous practice run - launch from the Portal to rank"}
         </p>
@@ -392,13 +570,21 @@ function TitleScreen({
 }
 
 function KickoffScreen({
+  musicEnabled,
   onBack,
   onStart,
+  onToggleMusic,
+  onToggleSfx,
   session,
+  sfxEnabled,
 }: {
+  musicEnabled: boolean;
   onBack: () => void;
   onStart: () => void;
+  onToggleMusic: () => void;
+  onToggleSfx: () => void;
   session: PlayerSession;
+  sfxEnabled: boolean;
 }) {
   return (
     <main className="title-shell kickoff-shell">
@@ -422,6 +608,12 @@ function KickoffScreen({
         <p className="title-session">
           {session.authenticated ? `Portal launch verified for ${session.handle}` : "Playing unranked as Stranger"}
         </p>
+        <AudioToggles
+          musicEnabled={musicEnabled}
+          onToggleMusic={onToggleMusic}
+          onToggleSfx={onToggleSfx}
+          sfxEnabled={sfxEnabled}
+        />
         <div className="kickoff-actions">
           <button className="secondary-command" onClick={onBack}>Back</button>
           <button className="primary-command" onClick={onStart}>Enter the Trail</button>
@@ -433,14 +625,22 @@ function KickoffScreen({
 
 function RecapScreen({
   leaderboard,
+  musicEnabled,
   onTitle,
+  onToggleMusic,
+  onToggleSfx,
   session,
   summary,
+  sfxEnabled,
 }: {
   leaderboard: Leaderboard;
+  musicEnabled: boolean;
   onTitle: () => void;
+  onToggleMusic: () => void;
+  onToggleSfx: () => void;
   session: PlayerSession;
   summary: RunSummary;
+  sfxEnabled: boolean;
 }) {
   return (
     <main className="title-shell recap-shell" data-result={summary.result}>
@@ -494,10 +694,43 @@ function RecapScreen({
         <p className="title-session">
           {session.authenticated ? `Score submitted for ${session.handle}` : "Unranked run - launch from the Portal to submit scores"}
         </p>
+        <AudioToggles
+          musicEnabled={musicEnabled}
+          onToggleMusic={onToggleMusic}
+          onToggleSfx={onToggleSfx}
+          sfxEnabled={sfxEnabled}
+        />
         <button className="primary-command" onClick={onTitle}>Back to Title</button>
       </section>
       <LeaderboardPanel leaderboard={leaderboard} />
     </main>
+  );
+}
+
+function AudioToggles({
+  musicEnabled,
+  onToggleMusic,
+  onToggleSfx,
+  sfxEnabled,
+}: {
+  musicEnabled: boolean;
+  onToggleMusic: () => void;
+  onToggleSfx: () => void;
+  sfxEnabled: boolean;
+}) {
+  return (
+    <div className="audio-toggles">
+      <AudioToggle enabled={sfxEnabled} label="SFX" onToggle={onToggleSfx} />
+      <AudioToggle enabled={musicEnabled} label="Music" onToggle={onToggleMusic} />
+    </div>
+  );
+}
+
+function AudioToggle({ enabled, label, onToggle }: { enabled: boolean; label: string; onToggle: () => void }) {
+  return (
+    <button className="audio-toggle" type="button" data-enabled={enabled} onClick={onToggle}>
+      {label} {enabled ? "On" : "Off"}
+    </button>
   );
 }
 
@@ -584,9 +817,11 @@ function TopBar({ state }: { state: GameState }) {
 function PartyPanel({
   state,
   dispatch,
+  onCommandSound,
 }: {
   state: GameState;
   dispatch: React.Dispatch<Parameters<typeof reducer>[1]>;
+  onCommandSound: (sound: SoundId) => void;
 }) {
   return (
     <aside className="panel party-panel">
@@ -597,7 +832,10 @@ function PartyPanel({
             key={hero.id}
             hero={hero}
             selected={state.selectedHero === hero.id}
-            onSelect={() => dispatch({ type: "select-hero", heroId: hero.id })}
+            onSelect={() => {
+              onCommandSound("select");
+              dispatch({ type: "select-hero", heroId: hero.id });
+            }}
           />
         ))}
       </div>
@@ -636,9 +874,11 @@ function HeroCard({
 function EnemyPanel({
   state,
   dispatch,
+  onCommandSound,
 }: {
   state: GameState;
   dispatch: React.Dispatch<Parameters<typeof reducer>[1]>;
+  onCommandSound: (sound: SoundId) => void;
 }) {
   if (state.phase === "shop" || state.phase === "story" || state.phase === "chest") {
     return (
@@ -662,7 +902,10 @@ function EnemyPanel({
             key={enemy.id}
             enemy={enemy}
             focused={state.focusedEnemyId === enemy.id}
-            onFocus={() => dispatch({ type: "focus-enemy", enemyId: enemy.id })}
+            onFocus={() => {
+              onCommandSound("select");
+              dispatch({ type: "focus-enemy", enemyId: enemy.id });
+            }}
           />
         ))}
       </div>
@@ -705,6 +948,7 @@ function CenterStage({
   dispatch,
   combatIntro,
   combatIntroActive,
+  onCommandSound,
   onSpecial,
   specialCinematic,
 }: {
@@ -712,6 +956,7 @@ function CenterStage({
   dispatch: React.Dispatch<Parameters<typeof reducer>[1]>;
   combatIntro: { floor: number; label: string } | null;
   combatIntroActive: boolean;
+  onCommandSound: (sound: SoundId) => void;
   onSpecial: (hero: Hero) => void;
   specialCinematic: SpecialCinematic | null;
 }) {
@@ -722,7 +967,7 @@ function CenterStage({
     return (
       <section className="center-stage center-stage--shop">
         <RouteMap state={state} />
-        <EventRoom event={state.roomEvent} dispatch={dispatch} />
+        <EventRoom event={state.roomEvent} dispatch={dispatch} onCommandSound={onCommandSound} />
       </section>
     );
   }
@@ -731,7 +976,7 @@ function CenterStage({
     return (
       <section className="center-stage center-stage--shop">
         <RouteMap state={state} />
-        <Shop state={state} dispatch={dispatch} />
+        <Shop state={state} dispatch={dispatch} onCommandSound={onCommandSound} />
       </section>
     );
   }
@@ -765,17 +1010,25 @@ function CenterStage({
         {combatIntro && <CombatIntro floor={combatIntro.floor} label={combatIntro.label} />}
         {specialCinematic && <SpecialOverlay cinematic={specialCinematic} />}
         {bossEnemies.length > 0 ? (
-          <DragonBoss enemies={bossEnemies} focusedEnemyId={state.focusedEnemyId} dispatch={dispatch} />
+          <DragonBoss
+            enemies={bossEnemies}
+            focusedEnemyId={state.focusedEnemyId}
+            dispatch={dispatch}
+            onCommandSound={onCommandSound}
+          />
         ) : (
           <div className="enemy-line" data-intro={combatIntroActive}>
             {state.enemies.map((enemy) => (
               <button
                 className="standing-unit standing-unit--enemy"
                 data-down={enemy.hp <= 0}
-                data-selected={state.focusedEnemyId === enemy.id}
-                key={enemy.id}
-                onClick={() => dispatch({ type: "focus-enemy", enemyId: enemy.id })}
-              >
+              data-selected={state.focusedEnemyId === enemy.id}
+              key={enemy.id}
+              onClick={() => {
+                onCommandSound("select");
+                dispatch({ type: "focus-enemy", enemyId: enemy.id });
+              }}
+            >
                 <Sprite index={enemy.sprite} flip />
                 <span className="standing-label">{enemy.name}</span>
               </button>
@@ -786,7 +1039,13 @@ function CenterStage({
 
       {state.phase === "ready" && (
         <div className="command-strip">
-          <button className="primary-command" onClick={() => dispatch({ type: "start" })}>
+          <button
+            className="primary-command"
+            onClick={() => {
+              onCommandSound("select");
+              dispatch({ type: "start" });
+            }}
+          >
             Tap to Advance
           </button>
         </div>
@@ -801,7 +1060,14 @@ function CenterStage({
           </div>
           <div className="task-grid">
             {TASKS.map((task) => (
-              <button disabled={combatIntroActive} key={task} onClick={() => dispatch({ type: "assign", task })}>
+              <button
+                disabled={combatIntroActive}
+                key={task}
+                onClick={() => {
+                  onCommandSound("task");
+                  dispatch({ type: "assign", task });
+                }}
+              >
                 <span>{TASK_LABELS[task].label}</span>
                 <kbd className="key-hint">({TASK_HOTKEY_LABELS[task]})</kbd>
               </button>
@@ -809,7 +1075,11 @@ function CenterStage({
             <button
               className="special-command"
               disabled={combatIntroActive || !selected || !specialReady}
-              onClick={() => selected && onSpecial(selected)}
+              onClick={() => {
+                if (!selected) return;
+                onCommandSound("task");
+                onSpecial(selected);
+              }}
             >
               <span>{selected ? specialForHero(selected.id).label : "Special"}</span>
               <kbd className="key-hint">({SPECIAL_HOTKEY_LABEL})</kbd>
@@ -834,10 +1104,12 @@ function DragonBoss({
   enemies,
   focusedEnemyId,
   dispatch,
+  onCommandSound,
 }: {
   enemies: Enemy[];
   focusedEnemyId: string | null;
   dispatch: React.Dispatch<Parameters<typeof reducer>[1]>;
+  onCommandSound: (sound: SoundId) => void;
 }) {
   const isHeartPhase = enemies.length === 1 && enemies[0]?.bossPart === "heart";
   return (
@@ -854,7 +1126,10 @@ function DragonBoss({
             data-down={enemy.hp <= 0}
             disabled={enemy.hp <= 0}
             key={enemy.id}
-            onClick={() => dispatch({ type: "focus-enemy", enemyId: enemy.id })}
+            onClick={() => {
+              onCommandSound("select");
+              dispatch({ type: "focus-enemy", enemyId: enemy.id });
+            }}
           >
             <strong>{enemy.bossPart === "heart" ? "Heart" : enemy.name.replace("Dragon ", "")}</strong>
             <Meter label="HP" value={enemy.hp} max={enemy.maxHp} tone="red" />
@@ -913,9 +1188,11 @@ function effectSlot(effect: CombatEffect, state: GameState) {
 function EventRoom({
   event,
   dispatch,
+  onCommandSound,
 }: {
   event: RoomEvent | null;
   dispatch: React.Dispatch<Parameters<typeof reducer>[1]>;
+  onCommandSound: (sound: SoundId) => void;
 }) {
   if (!event) return null;
   return (
@@ -924,7 +1201,13 @@ function EventRoom({
       <h1>{event.title}</h1>
       <p>{event.body}</p>
       <div className="event-reward">{event.reward} gold</div>
-      <button className="primary-command" onClick={() => dispatch({ type: "claim-room" })}>
+      <button
+        className="primary-command"
+        onClick={() => {
+          onCommandSound("shop");
+          dispatch({ type: "claim-room" });
+        }}
+      >
         {event.type === "chest" ? "Take Loot" : "Continue"}
       </button>
     </div>
@@ -958,9 +1241,11 @@ function RouteMap({ state }: { state: GameState }) {
 function Shop({
   state,
   dispatch,
+  onCommandSound,
 }: {
   state: GameState;
   dispatch: React.Dispatch<Parameters<typeof reducer>[1]>;
+  onCommandSound: (sound: SoundId) => void;
 }) {
   return (
     <div className="shop">
@@ -982,7 +1267,10 @@ function Shop({
                   cost={cost}
                   affordable={state.gold >= cost}
                   available={available}
-                  onClick={() => dispatch({ type: "buy-service", service: service.id })}
+                  onClick={() => {
+                    onCommandSound("shop");
+                    dispatch({ type: "buy-service", service: service.id });
+                  }}
                 />
               );
             })}
@@ -1003,7 +1291,10 @@ function Shop({
                     value={value}
                     cost={cost}
                     affordable={state.gold >= cost}
-                    onClick={() => dispatch({ type: "buy", upgrade: option.id })}
+                    onClick={() => {
+                      onCommandSound("shop");
+                      dispatch({ type: "buy", upgrade: option.id });
+                    }}
                   />
                 );
               })}
@@ -1011,7 +1302,13 @@ function Shop({
           </section>
         ))}
       </div>
-      <button className="primary-command" onClick={() => dispatch({ type: "next-floor" })}>
+      <button
+        className="primary-command"
+        onClick={() => {
+          onCommandSound("select");
+          dispatch({ type: "next-floor" });
+        }}
+      >
         Enter Next Dungeon
       </button>
     </div>

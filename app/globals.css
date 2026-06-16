@@ -137,6 +137,33 @@ button {
   line-height: 1.7;
 }
 
+.audio-toggles {
+  display: inline-flex;
+  gap: 8px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.audio-toggle {
+  min-height: 34px;
+  padding: 7px 12px;
+  border: 1px solid rgba(180, 168, 145, 0.36);
+  background: rgba(5, 4, 7, 0.34);
+  color: var(--muted);
+  cursor: pointer;
+  text-transform: uppercase;
+}
+
+.audio-toggle[data-enabled="true"] {
+  border-color: rgba(225, 185, 85, 0.6);
+  color: var(--gold);
+}
+
+.audio-toggle:hover {
+  border-color: var(--paper);
+  color: var(--paper);
+}
+
 .leaderboard-panel {
   align-self: stretch;
   padding: 18px;
