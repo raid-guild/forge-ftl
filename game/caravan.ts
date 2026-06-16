@@ -2,6 +2,7 @@ export type Phase = "ready" | "combat" | "story" | "chest" | "shop" | "game-over
 export type HeroId = "fighter" | "wizard" | "bard" | "donkey";
 export type RoomType = "combat" | "story" | "chest";
 export type ShopServiceId = "healAll" | "reviveOne";
+export type SpecialId = "shieldBreaker" | "chainSpark" | "purpleEncore" | "panicKick";
 export type Task = "attack" | "repair-aura";
 export type UpgradeId =
   | "attackPower"
@@ -26,6 +27,7 @@ export interface Hero {
   task: Task | null;
   targetId: string | null;
   progress: number;
+  charge: number;
 }
 
 export interface Enemy {
@@ -48,7 +50,7 @@ export interface FloatText {
 
 export interface CombatEffect {
   id: number;
-  kind: "slash" | "spark" | "music" | "kick" | "repair" | "aura-hit";
+  kind: "slash" | "spark" | "music" | "kick" | "repair" | "aura-hit" | "special";
   side: "party" | "enemy" | "center";
   sourceId?: HeroId;
   targetId?: string;
@@ -102,6 +104,7 @@ export type Action =
   | { type: "select-hero"; heroId: HeroId }
   | { type: "focus-enemy"; enemyId: string }
   | { type: "assign"; task: Task }
+  | { type: "special"; heroId: HeroId }
   | { type: "buy"; upgrade: UpgradeId }
   | { type: "buy-service"; service: ShopServiceId }
   | { type: "claim-room" }
@@ -109,6 +112,7 @@ export type Action =
   | { type: "restart" };
 
 const AURA_REPAIR_COST = 10;
+export const SPECIAL_CHARGE_MAX = 100;
 const BASE_GOLD_REWARD = 10;
 const GOLD_PER_FLOOR = 4;
 const STORY_REWARD_MULTIPLIER = 0.7;
@@ -129,6 +133,7 @@ const BASE_PARTY: Hero[] = [
     task: null,
     targetId: null,
     progress: 0,
+    charge: 0,
   },
   {
     id: "wizard",
@@ -140,6 +145,7 @@ const BASE_PARTY: Hero[] = [
     task: null,
     targetId: null,
     progress: 0,
+    charge: 0,
   },
   {
     id: "bard",
@@ -151,6 +157,7 @@ const BASE_PARTY: Hero[] = [
     task: null,
     targetId: null,
     progress: 0,
+    charge: 0,
   },
   {
     id: "donkey",
@@ -163,6 +170,7 @@ const BASE_PARTY: Hero[] = [
     task: null,
     targetId: null,
     progress: 0,
+    charge: 0,
   },
 ];
 
@@ -216,6 +224,8 @@ export function reducer(state: GameState, action: Action): GameState {
       return { ...state, focusedEnemyId: action.enemyId };
     case "assign":
       return assignTask(state, action.task);
+    case "special":
+      return resolveSpecial(state, action.heroId);
     case "tick":
       return state.phase === "combat" ? stepCombat(state, action.dt) : ageFloats(state, action.dt);
     case "buy":
@@ -408,7 +418,7 @@ function resolveTask(state: GameState, hero: Hero): GameState {
     const heroBonus = hero.id === "fighter" ? 3 : hero.id === "donkey" ? -3 : 0;
     const damage = Math.max(1, 8 + state.upgrades.attackPower * 3 + heroBonus);
     return damageEnemy(
-      addEffect(clearHeroTask(state, hero.id), attackEffectForHero(hero.id), "enemy", {
+      addEffect(chargeHero(clearHeroTask(state, hero.id), hero.id, 22), attackEffectForHero(hero.id), "enemy", {
         sourceId: hero.id,
         targetId: hero.targetId ?? undefined,
       }),
@@ -426,11 +436,15 @@ function resolveTask(state: GameState, hero: Hero): GameState {
     const repaired = Math.max(1, 13 + state.upgrades.repairPower * 5 + repairBonus);
     return clearHeroTask(
       addEffect(
-        {
-          ...addFloat(state, `+${repaired} aura`, "center"),
-          mana: Math.max(0, state.mana - AURA_REPAIR_COST),
-          aura: clamp(state.aura + repaired, 0, state.maxAura),
-        },
+        chargeHero(
+          {
+            ...addFloat(state, `+${repaired} aura`, "center"),
+            mana: Math.max(0, state.mana - AURA_REPAIR_COST),
+            aura: clamp(state.aura + repaired, 0, state.maxAura),
+          },
+          hero.id,
+          18,
+        ),
         "repair",
         "party",
         { sourceId: hero.id },
@@ -440,6 +454,37 @@ function resolveTask(state: GameState, hero: Hero): GameState {
   }
 
   return state;
+}
+
+function resolveSpecial(state: GameState, heroId: HeroId): GameState {
+  if (state.phase !== "combat") return state;
+  const hero = state.party.find((member) => member.id === heroId);
+  if (!hero || hero.hp <= 0 || hero.charge < SPECIAL_CHARGE_MAX) return state;
+
+  const resetState = updateHero(clearHeroTask(state, heroId), heroId, { charge: 0 });
+  const baseState = addEffect(resetState, "special", "center", { sourceId: heroId });
+
+  if (heroId === "fighter") {
+    return damageEnemy(baseState, state.focusedEnemyId, 26 + state.upgrades.attackPower * 4, "shield break");
+  }
+
+  if (heroId === "wizard") {
+    return damageAllEnemies(baseState, 12 + state.upgrades.attackPower * 2, "chain spark");
+  }
+
+  if (heroId === "bard") {
+    return slowEnemies(damageAllEnemies(baseState, 7 + state.upgrades.attackPower, "encore"), 0.85);
+  }
+
+  return damageEnemy(
+    {
+      ...addFloat(baseState, "+18 aura / panic kick", "center"),
+      aura: clamp(baseState.aura + 18, 0, baseState.maxAura),
+    },
+    state.focusedEnemyId,
+    18,
+    "panic kick",
+  );
 }
 
 function tickEnemies(state: GameState, dt: number): GameState {
@@ -655,6 +700,24 @@ function damageEnemy(state: GameState, targetId: string | null, damage: number, 
   };
 }
 
+function damageAllEnemies(state: GameState, damage: number, text: string): GameState {
+  return {
+    ...addFloat(state, `${text} -${damage}`, "enemy"),
+    enemies: state.enemies.map((enemy) =>
+      enemy.hp > 0 ? { ...enemy, hp: clamp(enemy.hp - damage, 0, enemy.maxHp) } : enemy,
+    ),
+  };
+}
+
+function slowEnemies(state: GameState, seconds: number): GameState {
+  return {
+    ...addFloat(state, `+${seconds.toFixed(1)}s enemy delay`, "enemy"),
+    enemies: state.enemies.map((enemy) =>
+      enemy.hp > 0 ? { ...enemy, attackTimer: Math.min(enemy.attackEvery, enemy.attackTimer + seconds) } : enemy,
+    ),
+  };
+}
+
 function normalizeFocus(state: GameState): GameState {
   const focusedEnemyId = livingEnemyId(state, state.focusedEnemyId);
   return focusedEnemyId === state.focusedEnemyId ? state : { ...state, focusedEnemyId };
@@ -678,6 +741,12 @@ function updateHero(state: GameState, heroId: HeroId, patch: Partial<Hero>): Gam
     ...state,
     party: state.party.map((hero) => (hero.id === heroId ? { ...hero, ...patch } : hero)),
   };
+}
+
+function chargeHero(state: GameState, heroId: HeroId, amount: number): GameState {
+  return updateHero(state, heroId, {
+    charge: Math.min(SPECIAL_CHARGE_MAX, (state.party.find((hero) => hero.id === heroId)?.charge ?? 0) + amount),
+  });
 }
 
 function ageFloats(state: GameState, dt: number): GameState {
@@ -722,6 +791,13 @@ function attackEffectForHero(heroId: HeroId): CombatEffect["kind"] {
   if (heroId === "wizard") return "spark";
   if (heroId === "bard") return "music";
   return "kick";
+}
+
+export function specialForHero(heroId: HeroId): { id: SpecialId; label: string } {
+  if (heroId === "fighter") return { id: "shieldBreaker", label: "Shield Breaker" };
+  if (heroId === "wizard") return { id: "chainSpark", label: "Chain Spark" };
+  if (heroId === "bard") return { id: "purpleEncore", label: "Purple Encore" };
+  return { id: "panicKick", label: "Panic Kick" };
 }
 
 function firstLivingEnemy(enemies: Enemy[]) {

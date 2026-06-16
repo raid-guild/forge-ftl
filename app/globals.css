@@ -592,6 +592,76 @@ button {
   animation: intro-pop 540ms ease-out both;
 }
 
+.special-overlay {
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+  z-index: 7;
+  display: grid;
+  place-content: center;
+  gap: 6px;
+  overflow: hidden;
+  background:
+    linear-gradient(90deg, rgba(5, 4, 7, 0.16), rgba(5, 4, 7, 0.74), rgba(5, 4, 7, 0.16)),
+    rgba(5, 4, 7, 0.25);
+  color: var(--gold);
+  text-align: center;
+  text-transform: uppercase;
+  animation: special-backdrop 920ms ease-out both;
+}
+
+.special-overlay::before {
+  content: "";
+  position: absolute;
+  inset: 42% -20%;
+  background: rgba(225, 185, 85, 0.75);
+  filter: blur(14px);
+  transform: rotate(-8deg);
+  animation: special-streak 920ms ease-out both;
+}
+
+.special-overlay::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at 50% 50%, rgba(243, 234, 215, 0.4), transparent 38%);
+  animation: special-flash 920ms ease-out both;
+}
+
+.special-overlay[data-hero="fighter"]::before {
+  background: rgba(216, 76, 66, 0.86);
+}
+
+.special-overlay[data-hero="wizard"]::before {
+  background: rgba(95, 159, 215, 0.9);
+}
+
+.special-overlay[data-hero="bard"]::before {
+  background: rgba(151, 92, 221, 0.9);
+}
+
+.special-overlay[data-hero="donkey"]::before {
+  background: rgba(243, 212, 107, 0.95);
+}
+
+.special-overlay span,
+.special-overlay strong {
+  position: relative;
+  z-index: 1;
+  text-shadow: 0 0 14px rgba(5, 4, 7, 0.85);
+}
+
+.special-overlay span {
+  color: var(--paper);
+  font-size: 13px;
+}
+
+.special-overlay strong {
+  font-size: 34px;
+  line-height: 1.05;
+  animation: special-title 920ms cubic-bezier(0.18, 0.9, 0.24, 1.18) both;
+}
+
 .battle-status {
   position: absolute;
   z-index: 2;
@@ -959,6 +1029,68 @@ button {
   }
 }
 
+@keyframes special-backdrop {
+  0%,
+  100% {
+    opacity: 0;
+  }
+  18%,
+  72% {
+    opacity: 1;
+  }
+}
+
+@keyframes special-streak {
+  0% {
+    transform: translateX(-45%) rotate(-8deg) scaleX(0.15);
+    opacity: 0;
+  }
+  22% {
+    transform: translateX(0) rotate(-8deg) scaleX(1);
+    opacity: 1;
+  }
+  80% {
+    transform: translateX(18%) rotate(-8deg) scaleX(1.05);
+    opacity: 0.72;
+  }
+  100% {
+    transform: translateX(52%) rotate(-8deg) scaleX(0.3);
+    opacity: 0;
+  }
+}
+
+@keyframes special-flash {
+  0%,
+  100% {
+    opacity: 0;
+  }
+  28% {
+    opacity: 1;
+  }
+  54% {
+    opacity: 0.35;
+  }
+}
+
+@keyframes special-title {
+  0% {
+    transform: translateY(16px) scale(0.82);
+    opacity: 0;
+  }
+  24% {
+    transform: translateY(0) scale(1.08);
+    opacity: 1;
+  }
+  70% {
+    transform: translateY(0) scale(1);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(-10px) scale(1.04);
+    opacity: 0;
+  }
+}
+
 @keyframes task-pulse-red {
   from {
     transform: translateY(0);
@@ -1000,6 +1132,13 @@ button {
   align-items: center;
   justify-content: center;
   gap: 7px;
+}
+
+.task-grid .special-command {
+  grid-column: 1 / -1;
+  background:
+    linear-gradient(90deg, rgba(225, 185, 85, 0.16), rgba(151, 92, 221, 0.12)),
+    #251b18;
 }
 
 .task-grid button,

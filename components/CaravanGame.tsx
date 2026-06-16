@@ -2,10 +2,12 @@
 
 import { type CSSProperties, useEffect, useReducer, useRef, useState } from "react";
 import {
+  SPECIAL_CHARGE_MAX,
   TASK_LABELS,
   createInitialState,
   reducer,
   shopServiceCost,
+  specialForHero,
   upgradeCost,
   type CombatEffect,
   type Enemy,
@@ -35,6 +37,7 @@ const TASK_HOTKEY_LABELS: Record<Task, string> = {
   attack: "A",
   "repair-aura": "R",
 };
+const SPECIAL_HOTKEY_LABEL = "S";
 const SHOP_SERVICES: { id: ShopServiceId; label: string; note: string }[] = [
   { id: "healAll", label: "Full Heal", note: "Restore all living raiders to full HP" },
   { id: "reviveOne", label: "Revive Raider", note: "Bring one fallen raider back at full HP" },
@@ -98,10 +101,17 @@ interface RunSummary {
   score: number;
 }
 
+interface SpecialCinematic {
+  heroId: HeroId;
+  heroName: string;
+  label: string;
+}
+
 export default function CaravanGame() {
   const [state, dispatch] = useReducer(reducer, undefined, createInitialState);
   const [screen, setScreen] = useState<Screen>("title");
   const [combatIntro, setCombatIntro] = useState<{ floor: number; label: string } | null>(null);
+  const [specialCinematic, setSpecialCinematic] = useState<SpecialCinematic | null>(null);
   const [session, setSession] = useState<PlayerSession>({ authenticated: false, handle: "Stranger" });
   const [leaderboard, setLeaderboard] = useState<Leaderboard>({ personalBest: null, top: [] });
   const [summary, setSummary] = useState<RunSummary | null>(null);
@@ -109,10 +119,12 @@ export default function CaravanGame() {
   const submittedRun = useRef(false);
   const combatIntroActive = combatIntro !== null;
   const combatIntroActiveRef = useRef(false);
+  const specialActiveRef = useRef(false);
 
   useEffect(() => {
     const timer = window.setInterval(() => {
       if (combatIntroActiveRef.current) return;
+      if (specialActiveRef.current) return;
       dispatch({ type: "tick", dt: 1 / 12 });
     }, 1000 / 12);
     return () => window.clearInterval(timer);
@@ -125,7 +137,9 @@ export default function CaravanGame() {
   useEffect(() => {
     if (screen !== "playing" || state.phase !== "combat") {
       combatIntroActiveRef.current = false;
+      specialActiveRef.current = false;
       setCombatIntro(null);
+      setSpecialCinematic(null);
       return;
     }
 
@@ -170,6 +184,7 @@ export default function CaravanGame() {
     const onKeyDown = (event: KeyboardEvent) => {
       if (screen !== "playing" || state.phase !== "combat") return;
       if (combatIntroActiveRef.current) return;
+      if (specialActiveRef.current) return;
       if (event.metaKey || event.ctrlKey || event.altKey) return;
       if (isEditableTarget(event.target)) return;
 
@@ -199,12 +214,43 @@ export default function CaravanGame() {
       if (key === "r") {
         event.preventDefault();
         dispatch({ type: "assign", task: "repair-aura" });
+        return;
+      }
+
+      if (key === "s") {
+        const hero = state.party.find((member) => member.id === state.selectedHero);
+        if (hero) {
+          event.preventDefault();
+          triggerSpecial(hero);
+        }
       }
     };
 
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [screen, state.phase, state.enemies]);
+  }, [screen, state.phase, state.enemies, state.party, state.selectedHero]);
+
+  const triggerSpecial = (hero: Hero) => {
+    if (hero.hp <= 0 || hero.charge < SPECIAL_CHARGE_MAX || specialActiveRef.current || combatIntroActiveRef.current) {
+      return;
+    }
+
+    specialActiveRef.current = true;
+    setSpecialCinematic({
+      heroId: hero.id,
+      heroName: hero.name,
+      label: specialForHero(hero.id).label,
+    });
+
+    window.setTimeout(() => {
+      dispatch({ type: "special", heroId: hero.id });
+    }, 620);
+
+    window.setTimeout(() => {
+      specialActiveRef.current = false;
+      setSpecialCinematic(null);
+    }, 920);
+  };
 
   const refreshShellData = async () => {
     const [sessionRes, scoreRes] = await Promise.all([
@@ -277,6 +323,8 @@ export default function CaravanGame() {
           dispatch={dispatch}
           combatIntro={combatIntro}
           combatIntroActive={combatIntroActive}
+          onSpecial={triggerSpecial}
+          specialCinematic={specialCinematic}
         />
         <EnemyPanel state={state} dispatch={dispatch} />
       </section>
@@ -479,6 +527,7 @@ function HeroCard({
           </span>
         </span>
         <Meter label="HP" value={hero.hp} max={hero.maxHp} tone="red" />
+        <Meter label="SP" value={hero.charge} max={SPECIAL_CHARGE_MAX} tone="gold" />
         <TaskQueue task={hero.task} progress={hero.progress} />
       </span>
     </button>
@@ -551,13 +600,18 @@ function CenterStage({
   dispatch,
   combatIntro,
   combatIntroActive,
+  onSpecial,
+  specialCinematic,
 }: {
   state: GameState;
   dispatch: React.Dispatch<Parameters<typeof reducer>[1]>;
   combatIntro: { floor: number; label: string } | null;
   combatIntroActive: boolean;
+  onSpecial: (hero: Hero) => void;
+  specialCinematic: SpecialCinematic | null;
 }) {
   const selected = state.party.find((hero) => hero.id === state.selectedHero);
+  const specialReady = selected ? selected.hp > 0 && selected.charge >= SPECIAL_CHARGE_MAX : false;
   if (state.phase === "story" || state.phase === "chest") {
     return (
       <section className="center-stage center-stage--shop">
@@ -603,6 +657,7 @@ function CenterStage({
         </div>
         <EffectLayer effects={state.effects} state={state} />
         {combatIntro && <CombatIntro floor={combatIntro.floor} label={combatIntro.label} />}
+        {specialCinematic && <SpecialOverlay cinematic={specialCinematic} />}
         <div className="enemy-line" data-intro={combatIntroActive}>
           {state.enemies.map((enemy) => (
             <button
@@ -641,6 +696,14 @@ function CenterStage({
                 <kbd className="key-hint">({TASK_HOTKEY_LABELS[task]})</kbd>
               </button>
             ))}
+            <button
+              className="special-command"
+              disabled={combatIntroActive || !selected || !specialReady}
+              onClick={() => selected && onSpecial(selected)}
+            >
+              <span>{selected ? specialForHero(selected.id).label : "Special"}</span>
+              <kbd className="key-hint">({SPECIAL_HOTKEY_LABEL})</kbd>
+            </button>
           </div>
         </div>
       )}
@@ -654,6 +717,15 @@ function CenterStage({
         </div>
       )}
     </section>
+  );
+}
+
+function SpecialOverlay({ cinematic }: { cinematic: SpecialCinematic }) {
+  return (
+    <div className="special-overlay" data-hero={cinematic.heroId} aria-live="polite">
+      <span>{cinematic.heroName}</span>
+      <strong>{cinematic.label}</strong>
+    </div>
   );
 }
 
