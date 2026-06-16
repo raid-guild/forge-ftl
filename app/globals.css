@@ -1492,9 +1492,91 @@ button {
     grid-template-columns: 1fr;
   }
 
-  .unit-list,
   .shop-grid {
     grid-template-columns: 1fr;
+  }
+
+  .party-panel .unit-list {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .enemy-panel .unit-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .party-panel .unit-card,
+  .enemy-panel .unit-card {
+    min-height: 116px;
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: start;
+    gap: 5px;
+    padding: 7px;
+    text-align: center;
+  }
+
+  .party-panel .unit-card > .sprite,
+  .enemy-panel .unit-card > .sprite {
+    align-self: center;
+    width: 42px;
+    height: 42px;
+    flex: 0 0 42px;
+    background-size: 672px 42px;
+    background-position-x: calc(var(--sprite-index) * -42px);
+  }
+
+  .party-panel .unit-card > .sprite--donkey,
+  .enemy-panel .unit-card > .sprite--donkey {
+    background-size: 168px 42px;
+    background-position-x: calc(var(--sprite-index) * -42px);
+  }
+
+  .party-panel .unit-main,
+  .enemy-panel .unit-main {
+    width: 100%;
+    gap: 4px;
+  }
+
+  .party-panel .unit-title,
+  .enemy-panel .unit-title {
+    justify-items: center;
+    gap: 1px;
+  }
+
+  .party-panel .unit-title strong,
+  .enemy-panel .unit-title strong {
+    max-width: 100%;
+    overflow: hidden;
+    font-size: 11px;
+    line-height: 1.1;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .party-panel .unit-title small,
+  .party-panel .key-hint,
+  .party-panel .queue {
+    display: none;
+  }
+
+  .enemy-panel .unit-title small {
+    font-size: 9px;
+  }
+
+  .party-panel .meter,
+  .enemy-panel .meter {
+    grid-template-columns: 18px 1fr;
+    gap: 4px;
+  }
+
+  .party-panel .meter-label,
+  .enemy-panel .meter-label {
+    font-size: 9px;
+  }
+
+  .party-panel .meter-track,
+  .enemy-panel .meter-track {
+    height: 7px;
   }
 
   .task-grid {
@@ -1580,14 +1662,50 @@ button {
     justify-content: flex-start;
   }
 
-  .unit-list {
-    grid-template-columns: 1fr;
+  .panel {
+    padding: 8px;
   }
 
-  .unit-card {
-    min-height: 82px;
-    display: flex;
-    text-align: left;
+  .party-panel .unit-list {
+    grid-template-columns: repeat(4, minmax(64px, 1fr));
+    gap: 6px;
+  }
+
+  .enemy-panel .unit-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .party-panel .unit-card {
+    min-height: 104px;
+    padding: 6px;
+  }
+
+  .enemy-panel .unit-card {
+    min-height: 108px;
+  }
+
+  .party-panel .unit-card > .sprite,
+  .enemy-panel .unit-card > .sprite {
+    width: 38px;
+    height: 38px;
+    flex-basis: 38px;
+    background-size: 608px 38px;
+    background-position-x: calc(var(--sprite-index) * -38px);
+  }
+
+  .party-panel .unit-card > .sprite--donkey,
+  .enemy-panel .unit-card > .sprite--donkey {
+    background-size: 152px 38px;
+    background-position-x: calc(var(--sprite-index) * -38px);
+  }
+
+  .party-panel .unit-title strong {
+    font-size: 10px;
+  }
+
+  .party-panel .meter {
+    grid-template-columns: 16px 1fr;
+    gap: 3px;
   }
 
   .center-stage {
