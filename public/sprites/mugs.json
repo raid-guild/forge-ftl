@@ -1,0 +1,13 @@
+{
+  "cell": {
+    "w": 16,
+    "h": 16
+  },
+  "names": [
+    "empty",
+    "filling-1",
+    "filling-2",
+    "full",
+    "life-full"
+  ]
+}
