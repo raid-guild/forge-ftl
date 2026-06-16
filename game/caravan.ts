@@ -1,6 +1,7 @@
 export type Phase = "ready" | "combat" | "story" | "chest" | "shop" | "game-over" | "won";
-export type HeroId = "fighter" | "wizard" | "bard";
+export type HeroId = "fighter" | "wizard" | "bard" | "donkey";
 export type RoomType = "combat" | "story" | "chest";
+export type ShopServiceId = "healAll" | "reviveOne";
 export type Task = "attack" | "repair-aura";
 export type UpgradeId =
   | "attackPower"
@@ -10,6 +11,7 @@ export type UpgradeId =
   | "fighterHp"
   | "wizardHp"
   | "bardHp"
+  | "donkeyHp"
   | "manaRecharge"
   | "maxMana";
 
@@ -18,6 +20,7 @@ export interface Hero {
   name: string;
   role: string;
   sprite: number;
+  spriteSheet?: "characters" | "donkey";
   hp: number;
   maxHp: number;
   task: Task | null;
@@ -76,6 +79,7 @@ export interface GameState {
     fighterHp: number;
     wizardHp: number;
     bardHp: number;
+    donkeyHp: number;
     manaRecharge: number;
     maxMana: number;
   };
@@ -88,6 +92,7 @@ export type Action =
   | { type: "focus-enemy"; enemyId: string }
   | { type: "assign"; task: Task }
   | { type: "buy"; upgrade: UpgradeId }
+  | { type: "buy-service"; service: ShopServiceId }
   | { type: "claim-room" }
   | { type: "next-floor" }
   | { type: "restart" };
@@ -136,6 +141,18 @@ const BASE_PARTY: Hero[] = [
     targetId: null,
     progress: 0,
   },
+  {
+    id: "donkey",
+    name: "Donkey",
+    role: "Pack Mule",
+    sprite: 0,
+    spriteSheet: "donkey",
+    hp: 22,
+    maxHp: 22,
+    task: null,
+    targetId: null,
+    progress: 0,
+  },
 ];
 
 export const TASK_LABELS = TASKS;
@@ -167,6 +184,7 @@ export function createInitialState(): GameState {
       fighterHp: 0,
       wizardHp: 0,
       bardHp: 0,
+      donkeyHp: 0,
       manaRecharge: 0,
       maxMana: 0,
     },
@@ -189,6 +207,8 @@ export function reducer(state: GameState, action: Action): GameState {
       return state.phase === "combat" ? stepCombat(state, action.dt) : ageFloats(state, action.dt);
     case "buy":
       return buyUpgrade(state, action.upgrade);
+    case "buy-service":
+      return buyShopService(state, action.service);
     case "claim-room":
       return claimRoom(state);
     case "next-floor":
@@ -370,7 +390,8 @@ function tickHeroes(state: GameState, dt: number): GameState {
 
 function resolveTask(state: GameState, hero: Hero): GameState {
   if (hero.task === "attack") {
-    const damage = 8 + state.upgrades.attackPower * 3 + (hero.id === "fighter" ? 3 : 0);
+    const heroBonus = hero.id === "fighter" ? 3 : hero.id === "donkey" ? -3 : 0;
+    const damage = Math.max(1, 8 + state.upgrades.attackPower * 3 + heroBonus);
     return damageEnemy(clearHeroTask(state, hero.id), hero.targetId, damage, "hit");
   }
 
@@ -378,7 +399,8 @@ function resolveTask(state: GameState, hero: Hero): GameState {
     if (state.mana < AURA_REPAIR_COST) {
       return clearHeroTask(pushLog(state, "The aura repair stalls without mana."), hero.id);
     }
-    const repaired = 13 + state.upgrades.repairPower * 5 + (hero.id === "bard" ? 3 : 0);
+    const repairBonus = hero.id === "bard" ? 3 : hero.id === "donkey" ? -4 : 0;
+    const repaired = Math.max(1, 13 + state.upgrades.repairPower * 5 + repairBonus);
     return clearHeroTask(
       {
         ...addFloat(state, `+${repaired} aura`, "center"),
@@ -460,8 +482,41 @@ function buyUpgrade(state: GameState, upgrade: UpgradeId): GameState {
   if (upgrade === "bardHp") {
     next = upgradeHeroHp(next, "bard", 6);
   }
+  if (upgrade === "donkeyHp") {
+    next = upgradeHeroHp(next, "donkey", 5);
+  }
 
   return pushLog(next, `${upgradeLabel(upgrade)} upgraded.`);
+}
+
+function buyShopService(state: GameState, service: ShopServiceId): GameState {
+  if (state.phase !== "shop") return state;
+  const cost = shopServiceCost(service, state.floor);
+  if (state.gold < cost) return pushLog(state, "Not enough gold.");
+
+  if (service === "healAll") {
+    const hasWounded = state.party.some((hero) => hero.hp > 0 && hero.hp < hero.maxHp);
+    if (!hasWounded) return pushLog(state, "Nobody needs healing.");
+    return pushLog(
+      {
+        ...state,
+        gold: state.gold - cost,
+        party: state.party.map((hero) => (hero.hp > 0 ? { ...hero, hp: hero.maxHp } : hero)),
+      },
+      "The raid eats, argues, and patches up.",
+    );
+  }
+
+  const fallen = state.party.find((hero) => hero.hp <= 0);
+  if (!fallen) return pushLog(state, "Nobody needs reviving.");
+  return pushLog(
+    {
+      ...state,
+      gold: state.gold - cost,
+      party: state.party.map((hero) => (hero.id === fallen.id ? { ...hero, hp: hero.maxHp } : hero)),
+    },
+    `${fallen.name} gets dragged back into formation.`,
+  );
 }
 
 export function upgradeCost(upgrade: UpgradeId, level: number) {
@@ -473,10 +528,16 @@ export function upgradeCost(upgrade: UpgradeId, level: number) {
     fighterHp: 10,
     wizardHp: 10,
     bardHp: 10,
+    donkeyHp: 8,
     manaRecharge: 12,
     maxMana: 12,
   };
   return base[upgrade] + level * 8;
+}
+
+export function shopServiceCost(service: ShopServiceId, floor: number) {
+  if (service === "healAll") return 10 + floor * 2;
+  return 18 + floor * 3;
 }
 
 function battleReward(floor: number) {
@@ -533,20 +594,20 @@ function taskSeconds(state: GameState, task: Task) {
 }
 
 function createEnemies(floor: number): Enemy[] {
-  const count = Math.min(4, 1 + Math.ceil(floor / 2));
+  const count = floor >= 8 ? 4 : floor >= 4 ? 3 : 2;
   const names = ["Skeleton", "Goblin", "Hex Rat", "Bone Guard"];
   const sprites = [8, 11, 6, 4];
   return Array.from({ length: count }, (_, index) => {
-    const hp = 18 + floor * 5 + index * 4;
+    const hp = 16 + floor * 4 + index * 3;
     return {
       id: `enemy-${floor}-${index}`,
       name: names[(floor + index) % names.length],
       sprite: sprites[(floor + index) % sprites.length],
       hp,
       maxHp: hp,
-      damage: 5 + floor + index,
-      attackEvery: Math.max(1.2, 2.45 - floor * 0.08 + index * 0.15),
-      attackTimer: 0.85 + index * 0.65,
+      damage: 4 + Math.ceil(floor * 0.85) + index,
+      attackEvery: Math.max(1.35, 2.65 - floor * 0.06 + index * 0.18),
+      attackTimer: 1 + index * 0.7,
     };
   });
 }
@@ -634,6 +695,7 @@ function upgradeLabel(upgrade: UpgradeId) {
     fighterHp: "Fighter HP",
     wizardHp: "Wizard HP",
     bardHp: "Bard HP",
+    donkeyHp: "Donkey HP",
     manaRecharge: "Mana Recharge",
     maxMana: "Max Mana",
   }[upgrade];

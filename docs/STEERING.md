@@ -112,7 +112,7 @@ Recommended first version:
 ## Near-Term Gameplay Checklist
 
 - [x] Desktop keyboard shortcuts
-  - `1`, `2`, `3`: select raider.
+  - `1`, `2`, `3`, `4`: select raider.
   - `A`: assign Attack.
   - `R`: assign Repair Aura.
   - `Shift + 1..4`: focus enemy target.
@@ -123,13 +123,13 @@ Recommended first version:
   - Make action controls sticky or easier to reach during combat.
   - Shrink/hide lower-priority log text during combat if needed.
   - Keep route map and Aura/Mana bars visible but compact.
-- [ ] Shop heal/revive
+- [x] Shop heal/revive
   - Heal all living raiders for gold.
-  - Revive one fallen raider for more gold.
+  - Revive one fallen raider for more gold at full HP.
   - Keep it shop-only for now.
-- [ ] Make revive rules explicit
-  - Decide whether dead raiders revive automatically between rooms.
-  - Preferred: no free full revive; shop revive or small automatic emergency revive only if needed for fun.
+- [x] Make revive rules explicit
+  - Dead raiders do not freely revive between rooms.
+  - Shop revive is the first recovery lever.
 - [ ] Improve combat feedback
   - Aura flash when monsters hit.
   - Attack animation from raider toward target.
@@ -138,16 +138,17 @@ Recommended first version:
 - [ ] Boss room at node 10
   - Distinct enemy name/art treatment.
   - Slightly different reward/result screen.
-- [ ] Tune early run economy
+- [x] Tune early run economy
   - Player should usually afford one useful shop action after node 1.
   - Story/chest should not leave the player under-upgraded.
+  - First pass: delayed 4-enemy rooms and softened enemy HP/damage/attack scaling.
 
 ## Character / Party Ideas
 
-- [ ] Donkey raider
+- [x] Donkey raider
   - Weak attack.
   - Funny story hooks.
-  - Possibly cannot repair aura.
+  - Weak aura repair.
   - Adds charm without much system complexity.
 - [ ] Simple role paths
   - Fighter: tank / heavy hit.
@@ -191,7 +192,7 @@ input path during combat.
 
 Initial shortcut map:
 
-- `1`, `2`, `3`: select Fighter, Wizard, Bard.
+- `1`, `2`, `3`, `4`: select Fighter, Wizard, Bard, Donkey.
 - `A`: assign Attack to the selected raider.
 - `R`: assign Repair Aura to the selected raider.
 - `Shift + 1`, `Shift + 2`, `Shift + 3`, `Shift + 4`: focus enemy by visible order.

@@ -35,6 +35,16 @@ button {
   font: inherit;
 }
 
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+}
+
 .title-shell {
   min-height: 100vh;
   display: grid;
@@ -68,17 +78,19 @@ button {
   text-align: center;
 }
 
-.title-art {
-  min-height: 118px;
-  display: flex;
-  align-items: flex-end;
-  justify-content: center;
-  gap: 16px;
-  padding: 20px 26px;
-  border: 1px solid rgba(225, 185, 85, 0.26);
+.title-hero {
+  position: relative;
+  overflow: hidden;
+  align-content: end;
+  padding-top: min(52vh, 560px);
   background:
-    linear-gradient(180deg, #17131a 0 55%, #2a252c 55% 58%, #18151b 58%),
-    rgba(5, 4, 7, 0.4);
+    linear-gradient(180deg, rgba(5, 4, 7, 0) 0 46%, rgba(5, 4, 7, 0.42) 63%, rgba(5, 4, 7, 0.88) 100%),
+    url("/art/title-screen.png") center / cover no-repeat,
+    rgba(27, 26, 32, 0.92);
+}
+
+.title-art {
+  min-height: 0;
 }
 
 .title-art .sprite {
@@ -168,6 +180,26 @@ button {
   grid-template-columns: 1fr;
 }
 
+.recap-shell[data-result="game-over"] {
+  background:
+    linear-gradient(180deg, rgba(5, 4, 7, 0.06), rgba(5, 4, 7, 0.86)),
+    url("/art/permadeath-screen.png") center / cover no-repeat,
+    var(--black);
+}
+
+.recap-shell[data-result="won"] {
+  background:
+    linear-gradient(180deg, rgba(5, 4, 7, 0.02), rgba(5, 4, 7, 0.72)),
+    url("/art/victory-screen.png") center / cover no-repeat,
+    var(--black);
+}
+
+.recap-shell[data-result="won"] .recap-panel,
+.recap-shell[data-result="game-over"] .recap-panel {
+  background: rgba(10, 8, 10, 0.72);
+  backdrop-filter: blur(1px);
+}
+
 .kickoff-grid,
 .recap-stats {
   width: min(860px, 100%);
@@ -250,6 +282,18 @@ button {
   border: 1px solid var(--line);
   background: rgba(27, 26, 32, 0.92);
   box-shadow: inset 0 0 0 1px rgba(243, 234, 215, 0.04);
+}
+
+.center-stage--shop {
+  background:
+    linear-gradient(180deg, rgba(5, 4, 7, 0.12), rgba(5, 4, 7, 0.58)),
+    url("/art/shop-background.png") center / cover no-repeat,
+    rgba(27, 26, 32, 0.92);
+}
+
+.center-stage--shop .shop {
+  background: rgba(10, 8, 10, 0.72);
+  backdrop-filter: blur(1px);
 }
 
 .top-bar {
@@ -341,6 +385,12 @@ button {
   gap: 8px;
 }
 
+.unit-meta {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
 .unit-title strong {
   font-size: 14px;
 }
@@ -348,6 +398,18 @@ button {
 .unit-title small {
   color: var(--muted);
   font-size: 11px;
+}
+
+.key-hint {
+  display: none;
+  border: 0;
+  background: transparent;
+  color: var(--gold);
+  font-family: inherit;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 .sprite {
@@ -361,6 +423,12 @@ button {
   background-position-y: 0;
   image-rendering: pixelated;
   filter: drop-shadow(0 8px 0 rgba(0, 0, 0, 0.25));
+}
+
+.sprite--donkey {
+  background-image: url("/sprites/donkey.png");
+  background-size: 224px 56px;
+  background-position-x: calc(var(--sprite-index) * -56px);
 }
 
 .meter {
@@ -621,6 +689,11 @@ button {
   background-position-x: calc(var(--sprite-index) * -72px);
 }
 
+.standing-unit .sprite--donkey {
+  background-size: 288px 72px;
+  background-position-x: calc(var(--sprite-index) * -72px);
+}
+
 .float-layer {
   pointer-events: none;
   position: absolute;
@@ -697,6 +770,13 @@ button {
   gap: 10px;
 }
 
+.task-grid button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+}
+
 .task-grid button,
 .primary-command,
 .shop-button {
@@ -742,17 +822,23 @@ button {
 .event-room {
   align-content: center;
   min-height: 360px;
+  background:
+    linear-gradient(180deg, rgba(5, 4, 7, 0.06), rgba(5, 4, 7, 0.7)),
+    url("/art/story-background.png") center / cover no-repeat,
+    rgba(27, 26, 32, 0.92);
 }
 
 .event-room[data-type="story"] {
   background:
-    linear-gradient(180deg, rgba(95, 159, 215, 0.08), transparent),
+    linear-gradient(180deg, rgba(5, 4, 7, 0.08), rgba(5, 4, 7, 0.68)),
+    url("/art/story-background.png") center / cover no-repeat,
     rgba(27, 26, 32, 0.92);
 }
 
 .event-room[data-type="chest"] {
   background:
-    linear-gradient(180deg, rgba(225, 185, 85, 0.12), transparent),
+    linear-gradient(180deg, rgba(5, 4, 7, 0.08), rgba(5, 4, 7, 0.68)),
+    url("/art/chest-background.png") center / cover no-repeat,
     rgba(27, 26, 32, 0.92);
 }
 
@@ -947,6 +1033,11 @@ button {
     background-position-x: calc(var(--sprite-index) * -46px);
   }
 
+  .sprite--donkey {
+    background-size: 184px 46px;
+    background-position-x: calc(var(--sprite-index) * -46px);
+  }
+
   .party-panel {
     order: 1;
   }
@@ -1026,6 +1117,12 @@ button {
   }
 }
 
+@media (min-width: 769px) {
+  .key-hint {
+    display: inline;
+  }
+}
+
 @media (max-width: 680px) {
   .kickoff-actions {
     grid-template-columns: 1fr;
@@ -1067,6 +1164,11 @@ button {
     width: 56px;
     height: 56px;
     background-size: 896px 56px;
+    background-position-x: calc(var(--sprite-index) * -56px);
+  }
+
+  .standing-unit .sprite--donkey {
+    background-size: 224px 56px;
     background-position-x: calc(var(--sprite-index) * -56px);
   }
 
@@ -1131,6 +1233,11 @@ button {
     width: 48px;
     height: 48px;
     background-size: 768px 48px;
+    background-position-x: calc(var(--sprite-index) * -48px);
+  }
+
+  .standing-unit .sprite--donkey {
+    background-size: 192px 48px;
     background-position-x: calc(var(--sprite-index) * -48px);
   }
 

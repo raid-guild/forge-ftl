@@ -5,12 +5,14 @@ import {
   TASK_LABELS,
   createInitialState,
   reducer,
+  shopServiceCost,
   upgradeCost,
   type Enemy,
   type GameState,
   type HeroId,
   type Hero,
   type RoomEvent,
+  type ShopServiceId,
   type Task,
   type UpgradeId,
 } from "@/game/caravan";
@@ -20,7 +22,22 @@ const HERO_HOTKEYS: Record<string, HeroId> = {
   "1": "fighter",
   "2": "wizard",
   "3": "bard",
+  "4": "donkey",
 };
+const HERO_HOTKEY_LABELS: Record<HeroId, string> = {
+  fighter: "1",
+  wizard: "2",
+  bard: "3",
+  donkey: "4",
+};
+const TASK_HOTKEY_LABELS: Record<Task, string> = {
+  attack: "A",
+  "repair-aura": "R",
+};
+const SHOP_SERVICES: { id: ShopServiceId; label: string; note: string }[] = [
+  { id: "healAll", label: "Full Heal", note: "Restore all living raiders to full HP" },
+  { id: "reviveOne", label: "Revive Raider", note: "Bring one fallen raider back at full HP" },
+];
 
 const SHOP_GROUPS: {
   title: string;
@@ -43,6 +60,7 @@ const SHOP_GROUPS: {
       { id: "fighterHp", label: "Fighter HP", note: "Raise Fighter max HP" },
       { id: "wizardHp", label: "Wizard HP", note: "Raise Wizard max HP" },
       { id: "bardHp", label: "Bard HP", note: "Raise Bard max HP" },
+      { id: "donkeyHp", label: "Donkey HP", note: "Raise Donkey max HP" },
     ],
   },
 ];
@@ -247,13 +265,9 @@ function TitleScreen({
   return (
     <main className="title-shell">
       <section className="title-hero">
-        <div className="title-art" aria-hidden="true">
-          <Sprite index={13} />
-          <Sprite index={14} />
-          <Sprite index={0} />
-        </div>
+        <div className="title-art" aria-hidden="true" />
         <p className="title-kicker">A real-time caravan roguelite</p>
-        <h1>Fantasy Trail Legends</h1>
+        <h1 className="sr-only">Fantasy Trail Legends</h1>
         <p className="title-copy">
           Guide a tiny raid through ten cursed rooms. Patch the aura, pick targets, loot what survives.
         </p>
@@ -290,7 +304,7 @@ function KickoffScreen({
           </div>
           <div>
             <h2>Controls</h2>
-            <p>Select a raider, choose Attack or Repair Aura, and focus enemies from the dungeon panel. Desktop: 1-3, A/R, Shift+1-4.</p>
+            <p>Select a raider, choose Attack or Repair Aura, and focus enemies from the dungeon panel. Desktop: 1-4, A/R, Shift+1-4.</p>
           </div>
           <div>
             <h2>Scoring</h2>
@@ -321,7 +335,7 @@ function RecapScreen({
   summary: RunSummary;
 }) {
   return (
-    <main className="title-shell recap-shell">
+    <main className="title-shell recap-shell" data-result={summary.result}>
       <section className="recap-panel">
         <p className="title-kicker">{summary.result === "won" ? "Trail cleared" : "Run ended"}</p>
         <h1>{summary.result === "won" ? "Caravan Clear" : "Perma Death"}</h1>
@@ -417,11 +431,14 @@ function HeroCard({
 }) {
   return (
     <button className="unit-card" data-selected={selected} data-down={hero.hp <= 0} onClick={onSelect}>
-      <Sprite index={hero.sprite} />
+      <Sprite index={heroSpriteIndex(hero)} sheet={hero.spriteSheet} />
       <span className="unit-main">
         <span className="unit-title">
           <strong>{hero.name}</strong>
-          <small>{hero.role}</small>
+          <span className="unit-meta">
+            <small>{hero.role}</small>
+            <kbd className="key-hint">({HERO_HOTKEY_LABELS[hero.id]})</kbd>
+          </span>
         </span>
         <Meter label="HP" value={hero.hp} max={hero.maxHp} tone="red" />
         <TaskQueue task={hero.task} progress={hero.progress} />
@@ -530,7 +547,7 @@ function CenterStage({
         <div className="party-line">
           {state.party.map((hero) => (
             <div className="standing-unit" key={hero.id} data-down={hero.hp <= 0} data-task={hero.task ?? "idle"}>
-              <Sprite index={hero.sprite} />
+              <Sprite index={heroSpriteIndex(hero)} sheet={hero.spriteSheet} />
               <TaskQueue task={hero.task} progress={hero.progress} compact />
             </div>
           ))}
@@ -574,7 +591,8 @@ function CenterStage({
           <div className="task-grid">
             {TASKS.map((task) => (
               <button key={task} onClick={() => dispatch({ type: "assign", task })}>
-                {TASK_LABELS[task].label}
+                <span>{TASK_LABELS[task].label}</span>
+                <kbd className="key-hint">({TASK_HOTKEY_LABELS[task]})</kbd>
               </button>
             ))}
           </div>
@@ -650,6 +668,27 @@ function Shop({
       <h1>Armory</h1>
       <p className="shop-summary">Gold {state.gold} · choose upgrades before Floor {state.floor + 1}</p>
       <div className="shop-sections">
+        <section className="shop-section">
+          <h2>Recovery</h2>
+          <div className="shop-grid">
+            {SHOP_SERVICES.map((service) => {
+              const cost = shopServiceCost(service.id, state.floor);
+              const available = shopServiceAvailable(state, service.id);
+              return (
+                <ShopButton
+                  key={service.id}
+                  label={service.label}
+                  note={service.note}
+                  value={null}
+                  cost={cost}
+                  affordable={state.gold >= cost}
+                  available={available}
+                  onClick={() => dispatch({ type: "buy-service", service: service.id })}
+                />
+              );
+            })}
+          </div>
+        </section>
         {SHOP_GROUPS.map((group) => (
           <section className="shop-section" key={group.title}>
             <h2>{group.title}</h2>
@@ -686,22 +725,33 @@ function ShopButton({
   value,
   cost,
   affordable,
+  available = true,
   onClick,
 }: {
   label: string;
   note: string;
-  value: number;
+  value: number | null;
   cost: number;
   affordable: boolean;
+  available?: boolean;
   onClick: () => void;
 }) {
+  const disabled = !available || !affordable;
   return (
-    <button className="shop-button" disabled={!affordable} onClick={onClick}>
+    <button className="shop-button" disabled={disabled} onClick={onClick}>
       <strong>{label}</strong>
       <small>{note}</small>
-      <span>Lv {value} · {cost}g{affordable ? "" : " · need more"}</span>
+      <span>
+        {value === null ? "" : `Lv ${value} · `}
+        {cost}g{!available ? " · not needed" : affordable ? "" : " · need more"}
+      </span>
     </button>
   );
+}
+
+function shopServiceAvailable(state: GameState, service: ShopServiceId) {
+  if (service === "healAll") return state.party.some((hero) => hero.hp > 0 && hero.hp < hero.maxHp);
+  return state.party.some((hero) => hero.hp <= 0);
 }
 
 function Meter({ label, value, max, tone }: { label: string; value: number; max: number; tone: string }) {
@@ -727,10 +777,26 @@ function TaskQueue({ task, progress, compact = false }: { task: Task | null; pro
   );
 }
 
-function Sprite({ index, flip = false }: { index: number; flip?: boolean }) {
+function heroSpriteIndex(hero: Hero) {
+  if (hero.spriteSheet !== "donkey") return hero.sprite;
+  if (hero.hp <= 0) return 3;
+  if (hero.task === "attack") return 1;
+  if (hero.task === "repair-aura") return 2;
+  return 0;
+}
+
+function Sprite({
+  index,
+  flip = false,
+  sheet = "characters",
+}: {
+  index: number;
+  flip?: boolean;
+  sheet?: Hero["spriteSheet"];
+}) {
   return (
     <span
-      className="sprite"
+      className={`sprite sprite--${sheet ?? "characters"}`}
       style={
         {
           "--sprite-index": index,
