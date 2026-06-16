@@ -558,6 +558,123 @@ button {
   right: 34px;
 }
 
+.dragon-boss {
+  position: absolute;
+  right: clamp(26px, 7vw, 112px);
+  bottom: 34px;
+  z-index: 2;
+  width: clamp(220px, 30vw, 380px);
+  aspect-ratio: 1;
+}
+
+.dragon-image {
+  position: absolute;
+  inset: 0;
+  background: url("/sprites/dragon-boss.png") center / contain no-repeat;
+  image-rendering: pixelated;
+  filter:
+    drop-shadow(0 0 16px rgba(216, 76, 66, 0.36))
+    drop-shadow(0 14px 0 rgba(0, 0, 0, 0.24));
+}
+
+.dragon-boss[data-heart-phase="true"] .dragon-image {
+  opacity: 0.52;
+  filter:
+    grayscale(0.35)
+    drop-shadow(0 0 18px rgba(151, 92, 221, 0.52))
+    drop-shadow(0 14px 0 rgba(0, 0, 0, 0.24));
+}
+
+.dragon-heart-core {
+  position: absolute;
+  left: 46%;
+  top: 48%;
+  width: 46px;
+  height: 46px;
+  border: 2px solid rgba(243, 234, 215, 0.75);
+  border-radius: 999px;
+  background:
+    radial-gradient(circle, rgba(243, 234, 215, 0.96) 0 16%, rgba(216, 76, 66, 0.96) 17% 46%, rgba(151, 92, 221, 0.72) 47% 100%);
+  box-shadow:
+    0 0 20px rgba(216, 76, 66, 0.92),
+    0 0 36px rgba(151, 92, 221, 0.74);
+  transform: translate(-50%, -50%);
+  animation: dragon-heartbeat 760ms ease-in-out infinite alternate;
+}
+
+.dragon-targets {
+  position: absolute;
+  inset: 0;
+}
+
+.dragon-target {
+  position: absolute;
+  width: min(128px, 42%);
+  display: grid;
+  gap: 4px;
+  padding: 6px;
+  border: 1px solid rgba(180, 168, 145, 0.38);
+  background: rgba(5, 4, 7, 0.72);
+  color: var(--paper);
+  text-align: left;
+  cursor: pointer;
+}
+
+.dragon-target:hover,
+.dragon-target[data-selected="true"] {
+  border-color: var(--gold);
+  box-shadow: 0 0 20px rgba(225, 185, 85, 0.28);
+}
+
+.dragon-target[data-down="true"] {
+  opacity: 0.24;
+}
+
+.dragon-target strong {
+  color: var(--gold);
+  font-size: 10px;
+}
+
+.dragon-target .meter {
+  grid-template-columns: 20px 1fr;
+  gap: 4px;
+}
+
+.dragon-target .meter-label {
+  font-size: 8px;
+}
+
+.dragon-target .meter-track {
+  height: 7px;
+}
+
+.dragon-target[data-part="head"] {
+  right: 6%;
+  top: 15%;
+}
+
+.dragon-target[data-part="left-claw"] {
+  left: 6%;
+  bottom: 18%;
+}
+
+.dragon-target[data-part="right-claw"] {
+  right: 0;
+  bottom: 22%;
+}
+
+.dragon-target[data-part="wings"] {
+  left: 16%;
+  top: 5%;
+}
+
+.dragon-target[data-part="heart"] {
+  left: 50%;
+  top: 50%;
+  width: min(142px, 48%);
+  transform: translate(-50%, -50%);
+}
+
 .party-line[data-intro="true"] {
   animation: party-enter 1450ms cubic-bezier(0.2, 0.9, 0.25, 1.25) both;
 }
@@ -765,6 +882,17 @@ button {
 
 .standing-unit--enemy[data-selected="true"] .sprite {
   filter: drop-shadow(0 0 8px rgba(225, 185, 85, 0.65));
+}
+
+.boss-part-mark {
+  width: 38px;
+  height: 38px;
+  flex: 0 0 38px;
+  border: 1px solid rgba(216, 76, 66, 0.72);
+  border-radius: 999px;
+  background:
+    radial-gradient(circle at 48% 46%, rgba(243, 234, 215, 0.75) 0 12%, rgba(216, 76, 66, 0.88) 13% 44%, rgba(50, 17, 31, 0.9) 45% 100%);
+  box-shadow: 0 0 12px rgba(216, 76, 66, 0.42);
 }
 
 .standing-unit[data-task="attack"] .sprite {
@@ -1004,6 +1132,15 @@ button {
   100% {
     transform: translate(0, 0);
     opacity: 1;
+  }
+}
+
+@keyframes dragon-heartbeat {
+  from {
+    transform: translate(-50%, -50%) scale(0.88);
+  }
+  to {
+    transform: translate(-50%, -50%) scale(1.12);
   }
 }
 
@@ -1625,6 +1762,36 @@ button {
     font-size: 9px;
   }
 
+  .dragon-boss {
+    right: 4px;
+    bottom: 42px;
+    width: 178px;
+  }
+
+  .dragon-target {
+    width: 78px;
+    gap: 3px;
+    padding: 4px;
+  }
+
+  .dragon-target strong {
+    font-size: 9px;
+  }
+
+  .dragon-target .meter {
+    grid-template-columns: 16px 1fr;
+    gap: 3px;
+  }
+
+  .dragon-target .meter-label {
+    font-size: 7px;
+  }
+
+  .dragon-heart-core {
+    width: 34px;
+    height: 34px;
+  }
+
   .float-text {
     top: 32%;
     font-size: 11px;
@@ -1723,6 +1890,40 @@ button {
   .party-line,
   .enemy-line {
     gap: 2px;
+  }
+
+  .dungeon-lane[data-boss="true"] .party-line {
+    left: 6px;
+  }
+
+  .dragon-boss {
+    right: -2px;
+    bottom: 44px;
+    width: 154px;
+  }
+
+  .dragon-target {
+    width: 68px;
+  }
+
+  .dragon-target[data-part="head"] {
+    right: 0;
+    top: 12%;
+  }
+
+  .dragon-target[data-part="left-claw"] {
+    left: 0;
+    bottom: 14%;
+  }
+
+  .dragon-target[data-part="right-claw"] {
+    right: 0;
+    bottom: 16%;
+  }
+
+  .dragon-target[data-part="wings"] {
+    left: 8%;
+    top: 3%;
   }
 
   .standing-unit .sprite {

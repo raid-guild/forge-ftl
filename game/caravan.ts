@@ -34,6 +34,8 @@ export interface Enemy {
   id: string;
   name: string;
   sprite: number;
+  bossPart?: "head" | "left-claw" | "right-claw" | "wings" | "heart";
+  attackLabel?: string;
   hp: number;
   maxHp: number;
   damage: number;
@@ -240,6 +242,7 @@ export function reducer(state: GameState, action: Action): GameState {
 }
 
 function startRoom(state: GameState, floor: number, forceCombat = false): GameState {
+  if (floor >= state.maxFloor) return startCombat(state, floor);
   const type = forceCombat ? "combat" : rollRoomType();
   if (type === "story") return startStoryRoom(state, floor);
   if (type === "chest") return startChestRoom(state, floor);
@@ -349,6 +352,18 @@ function stepCombat(state: GameState, dt: number): GameState {
   }
 
   if (next.enemies.every((enemy) => enemy.hp <= 0)) {
+    if (isDragonPartsFight(next)) {
+      const heart = createDragonHeart();
+      return {
+        ...next,
+        enemies: [heart],
+        focusedEnemyId: heart.id,
+        floats: [],
+        effects: [],
+        log: ["The dragon shell cracks. Its heart is exposed.", ...next.log].slice(0, 5),
+      };
+    }
+
     const reward = battleReward(next.floor);
     const score = next.score + 100 * next.floor + Math.round(next.aura) + Math.round(next.mana);
     if (next.floor >= next.maxFloor) {
@@ -507,8 +522,15 @@ function tickEnemies(state: GameState, dt: number): GameState {
     party = party.map((hero) =>
       hero.id === target?.id ? { ...hero, hp: clamp(hero.hp - hpDamage, 0, hero.maxHp) } : hero,
     );
+    const attackText = enemy.attackLabel ? `${enemy.attackLabel}: ` : "";
     next = addEffect(
-      addFloat(next, auraBlock > 0 ? `-${auraBlock} aura / -${hpDamage} hp` : `-${hpDamage} hp`, "party"),
+      addFloat(
+        next,
+        auraBlock > 0
+          ? `${attackText}-${auraBlock} aura / -${hpDamage} hp`
+          : `${attackText}-${hpDamage} hp`,
+        "party",
+      ),
       auraBlock > 0 ? "aura-hit" : "slash",
       auraBlock > 0 ? "center" : "party",
     );
@@ -671,22 +693,96 @@ function taskSeconds(state: GameState, task: Task) {
 }
 
 function createEnemies(floor: number): Enemy[] {
-  const count = floor >= 8 ? 4 : floor >= 4 ? 3 : 2;
+  if (floor >= 10) return createDragonParts();
+
+  const count = floor >= 9 ? 4 : floor >= 5 ? 3 : 2;
   const names = ["Skeleton", "Goblin", "Hex Rat", "Bone Guard"];
   const sprites = [8, 11, 6, 4];
   return Array.from({ length: count }, (_, index) => {
-    const hp = 16 + floor * 4 + index * 3;
+    const hp = Math.round(15 + floor * 3.35 + index * 2.5);
     return {
       id: `enemy-${floor}-${index}`,
       name: names[(floor + index) % names.length],
       sprite: sprites[(floor + index) % sprites.length],
       hp,
       maxHp: hp,
-      damage: 4 + Math.ceil(floor * 0.85) + index,
-      attackEvery: Math.max(1.35, 2.65 - floor * 0.06 + index * 0.18),
-      attackTimer: 1 + index * 0.7,
+      damage: 3 + Math.ceil(floor * 0.68) + index,
+      attackEvery: Math.max(1.65, 2.9 - floor * 0.04 + index * 0.2),
+      attackTimer: 1.2 + index * 0.75,
     };
   });
+}
+
+function createDragonParts(): Enemy[] {
+  return [
+    {
+      id: "dragon-head",
+      name: "Dragon Head",
+      sprite: 0,
+      bossPart: "head",
+      attackLabel: "Fire Breath",
+      hp: 92,
+      maxHp: 92,
+      damage: 18,
+      attackEvery: 4.8,
+      attackTimer: 2.3,
+    },
+    {
+      id: "dragon-left-claw",
+      name: "Left Claw",
+      sprite: 0,
+      bossPart: "left-claw",
+      attackLabel: "Left Swipe",
+      hp: 54,
+      maxHp: 54,
+      damage: 9,
+      attackEvery: 2.7,
+      attackTimer: 1.1,
+    },
+    {
+      id: "dragon-right-claw",
+      name: "Right Claw",
+      sprite: 0,
+      bossPart: "right-claw",
+      attackLabel: "Right Swipe",
+      hp: 54,
+      maxHp: 54,
+      damage: 10,
+      attackEvery: 3,
+      attackTimer: 1.7,
+    },
+    {
+      id: "dragon-wings",
+      name: "Wings",
+      sprite: 0,
+      bossPart: "wings",
+      attackLabel: "Wing Burst",
+      hp: 66,
+      maxHp: 66,
+      damage: 12,
+      attackEvery: 5.4,
+      attackTimer: 3.2,
+    },
+  ];
+}
+
+function createDragonHeart(): Enemy {
+  return {
+    id: "dragon-heart",
+    name: "Dragon Heart",
+    sprite: 0,
+    bossPart: "heart",
+    attackLabel: "Heartflare",
+    hp: 84,
+    maxHp: 84,
+    damage: 14,
+    attackEvery: 3.8,
+    attackTimer: 1.4,
+  };
+}
+
+function isDragonPartsFight(state: GameState) {
+  return state.enemies.some((enemy) => enemy.bossPart && enemy.bossPart !== "heart");
 }
 
 function damageEnemy(state: GameState, targetId: string | null, damage: number, text: string): GameState {
@@ -813,6 +909,7 @@ function cloneParty(party: Hero[]) {
 }
 
 function encounterName(floor: number) {
+  if (floor >= 10) return "The Toll Dragon";
   const names = ["Bone Toll", "Mold Shrine", "Rust Hall", "Candle Pit", "Last Stair"];
   return names[(floor - 1) % names.length];
 }

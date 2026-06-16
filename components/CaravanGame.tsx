@@ -556,7 +556,7 @@ function EnemyPanel({
 
   return (
     <aside className="panel enemy-panel">
-      <h2>Dungeon</h2>
+      <h2>{state.enemies.some((enemy) => enemy.bossPart) ? "Dragon" : "Dungeon"}</h2>
       <div className="unit-list">
         {state.enemies.map((enemy) => (
           <EnemyCard
@@ -581,16 +581,22 @@ function EnemyCard({
   onFocus: () => void;
 }) {
   return (
-    <button className="unit-card enemy-card" data-selected={focused} data-down={enemy.hp <= 0} onClick={onFocus}>
+    <button
+      className="unit-card enemy-card"
+      data-boss-part={enemy.bossPart ?? "none"}
+      data-selected={focused}
+      data-down={enemy.hp <= 0}
+      onClick={onFocus}
+    >
       <span className="unit-main">
         <span className="unit-title">
           <strong>{enemy.name}</strong>
-          <small>{enemy.hp <= 0 ? "Banished" : "Auto-attacks"}</small>
+          <small>{enemy.hp <= 0 ? "Broken" : enemy.attackLabel ?? "Auto-attacks"}</small>
         </span>
         <Meter label="HP" value={enemy.hp} max={enemy.maxHp} tone="red" />
         <Meter label="Next" value={enemy.attackEvery - enemy.attackTimer} max={enemy.attackEvery} tone="violet" />
       </span>
-      <Sprite index={enemy.sprite} flip />
+      {enemy.bossPart ? <span className="boss-part-mark" aria-hidden="true" /> : <Sprite index={enemy.sprite} flip />}
     </button>
   );
 }
@@ -612,6 +618,7 @@ function CenterStage({
 }) {
   const selected = state.party.find((hero) => hero.id === state.selectedHero);
   const specialReady = selected ? selected.hp > 0 && selected.charge >= SPECIAL_CHARGE_MAX : false;
+  const bossEnemies = state.enemies.filter((enemy) => enemy.bossPart);
   if (state.phase === "story" || state.phase === "chest") {
     return (
       <section className="center-stage center-stage--shop">
@@ -632,7 +639,7 @@ function CenterStage({
 
   return (
     <section className="center-stage">
-      <div className="dungeon-lane" data-intro={combatIntroActive}>
+      <div className="dungeon-lane" data-boss={bossEnemies.length > 0} data-intro={combatIntroActive}>
         <div className="battle-status">
           <RouteMap state={state} />
           <div className="resource-bank">
@@ -658,20 +665,24 @@ function CenterStage({
         <EffectLayer effects={state.effects} state={state} />
         {combatIntro && <CombatIntro floor={combatIntro.floor} label={combatIntro.label} />}
         {specialCinematic && <SpecialOverlay cinematic={specialCinematic} />}
-        <div className="enemy-line" data-intro={combatIntroActive}>
-          {state.enemies.map((enemy) => (
-            <button
-              className="standing-unit standing-unit--enemy"
-              data-down={enemy.hp <= 0}
-              data-selected={state.focusedEnemyId === enemy.id}
-              key={enemy.id}
-              onClick={() => dispatch({ type: "focus-enemy", enemyId: enemy.id })}
-            >
-              <Sprite index={enemy.sprite} flip />
-              <span className="standing-label">{enemy.name}</span>
-            </button>
-          ))}
-        </div>
+        {bossEnemies.length > 0 ? (
+          <DragonBoss enemies={bossEnemies} focusedEnemyId={state.focusedEnemyId} dispatch={dispatch} />
+        ) : (
+          <div className="enemy-line" data-intro={combatIntroActive}>
+            {state.enemies.map((enemy) => (
+              <button
+                className="standing-unit standing-unit--enemy"
+                data-down={enemy.hp <= 0}
+                data-selected={state.focusedEnemyId === enemy.id}
+                key={enemy.id}
+                onClick={() => dispatch({ type: "focus-enemy", enemyId: enemy.id })}
+              >
+                <Sprite index={enemy.sprite} flip />
+                <span className="standing-label">{enemy.name}</span>
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       {state.phase === "ready" && (
@@ -717,6 +728,41 @@ function CenterStage({
         </div>
       )}
     </section>
+  );
+}
+
+function DragonBoss({
+  enemies,
+  focusedEnemyId,
+  dispatch,
+}: {
+  enemies: Enemy[];
+  focusedEnemyId: string | null;
+  dispatch: React.Dispatch<Parameters<typeof reducer>[1]>;
+}) {
+  const isHeartPhase = enemies.length === 1 && enemies[0]?.bossPart === "heart";
+  return (
+    <div className="dragon-boss" data-heart-phase={isHeartPhase} aria-label="Toll Dragon">
+      <div className="dragon-image" aria-hidden="true">
+        {isHeartPhase && <span className="dragon-heart-core" />}
+      </div>
+      <div className="dragon-targets">
+        {enemies.map((enemy) => (
+          <button
+            className="dragon-target"
+            data-part={enemy.bossPart}
+            data-selected={focusedEnemyId === enemy.id}
+            data-down={enemy.hp <= 0}
+            disabled={enemy.hp <= 0}
+            key={enemy.id}
+            onClick={() => dispatch({ type: "focus-enemy", enemyId: enemy.id })}
+          >
+            <strong>{enemy.bossPart === "heart" ? "Heart" : enemy.name.replace("Dragon ", "")}</strong>
+            <Meter label="HP" value={enemy.hp} max={enemy.maxHp} tone="red" />
+          </button>
+        ))}
+      </div>
+    </div>
   );
 }
 

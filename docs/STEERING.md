@@ -135,13 +135,16 @@ Recommended first version:
   - Attack animation from raider toward target.
   - Repair pulse into aura bar.
   - Damage numbers near the target.
-- [ ] Boss room at node 10
-  - Distinct enemy name/art treatment.
-  - Slightly different reward/result screen.
+- [x] Boss room at node 10
+  - Distinct dragon art treatment.
+  - Four targetable parts: head, left claw, right claw, wings.
+  - Final Dragon Heart phase after the parts are destroyed.
+  - Slightly different reward/result screen remains future polish.
 - [x] Tune early run economy
   - Player should usually afford one useful shop action after node 1.
   - Story/chest should not leave the player under-upgraded.
   - First pass: delayed 4-enemy rooms and softened enemy HP/damage/attack scaling.
+  - Second pass: floor 6 was too punishing; normal 4-enemy rooms now wait until floor 9, with a flatter HP/damage curve.
 
 ## Character / Party Ideas
 
