@@ -29,7 +29,10 @@ export async function GET(request: Request) {
       path: "/",
     });
     return NextResponse.redirect(new URL("/", url.origin));
-  } catch {
+  } catch (error) {
+    console.warn("Portal launch rejected.", {
+      reason: error instanceof Error ? error.message : "Unknown launch verification error.",
+    });
     return NextResponse.redirect(new URL("/?launch=invalid", url.origin));
   }
 }

@@ -52,12 +52,12 @@ export function verifyPortalLaunchToken(token: string): PortalLaunchClaims {
 
   const claims = parseBase64UrlJson<PortalLaunchClaims>(encodedPayload);
   const expectedAudience = process.env.PORTAL_MODULE_AUDIENCE ?? "fantasy-trail-legends";
-  const expectedIssuer = process.env.PORTAL_MODULE_ISSUER ?? "https://portal.raidguild.org";
+  const expectedIssuers = portalModuleIssuers();
   const expectedSlug = process.env.PORTAL_MODULE_SLUG ?? expectedAudience;
   const audience = Array.isArray(claims.aud) ? claims.aud : [claims.aud];
 
   if (claims.typ !== "portal_module_launch") throw new Error("Invalid launch token type.");
-  if (claims.iss !== expectedIssuer) throw new Error("Invalid launch token issuer.");
+  if (!expectedIssuers.includes(claims.iss)) throw new Error("Invalid launch token issuer.");
   if (!audience.includes(expectedAudience)) throw new Error("Invalid launch token audience.");
   if (claims.moduleSlug !== expectedSlug) throw new Error("Invalid launch module slug.");
   if (!claims.exp || claims.exp * 1000 < Date.now()) throw new Error("Launch token expired.");
@@ -128,4 +128,12 @@ function timingSafeEqual(a: string, b: string) {
 
 function localSessionSecret() {
   return process.env.SESSION_SECRET ?? process.env.PORTAL_MODULE_LAUNCH_SECRET ?? "local-dev-session-secret";
+}
+
+function portalModuleIssuers() {
+  const issuers = process.env.PORTAL_MODULE_ALLOWED_ISSUERS ?? process.env.PORTAL_MODULE_ISSUER;
+  return (issuers ?? "https://portal.raidguild.org")
+    .split(",")
+    .map((issuer) => issuer.trim().replace(/\/+$/, ""))
+    .filter(Boolean);
 }

@@ -15,7 +15,7 @@ name: Fantasy Trail Legends
 slug: fantasy-trail-legends
 moduleKind: external
 authMode: signed_launch
-externalCallbackURL: https://your-game.example.com/portal/callback
+externalCallbackURL: https://forge-ftl-production.up.railway.app/portal/callback
 launchSecretEnvKey: FANTASY_TRAIL_LEGENDS_LAUNCH_SECRET
 launchAudience: fantasy-trail-legends
 launchTokenTTLSeconds: 120
@@ -32,12 +32,15 @@ PORTAL_MODULE_LAUNCH_SECRET=shared-secret-from-portal
 PORTAL_MODULE_AUDIENCE=fantasy-trail-legends
 PORTAL_MODULE_SLUG=fantasy-trail-legends
 PORTAL_MODULE_ISSUER=https://portal.raidguild.org
+PORTAL_MODULE_ALLOWED_ISSUERS=https://portal.raidguild.org,https://raida.raidguild.org,https://localhost:8080
 SESSION_SECRET=separate-local-session-secret
 SQLITE_PATH=/data/fantasy-trail-legends.sqlite
 ```
 
 `SQLITE_PATH` should point at a Railway persistent volume path in production.
 If omitted, local development uses `./data/fantasy-trail-legends.sqlite`.
+`PORTAL_MODULE_ALLOWED_ISSUERS` is optional, but useful when the same deployed
+game is launched from both local Portal development and a deployed Portal host.
 
 ## Flow
 
