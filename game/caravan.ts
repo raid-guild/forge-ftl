@@ -43,6 +43,18 @@ export interface Enemy {
   attackTimer: number;
 }
 
+export type HeroCount = Record<HeroId, number>;
+
+export interface RunStats {
+  attacks: HeroCount;
+  repairs: HeroCount;
+  specials: HeroCount;
+  fallen: number;
+  goldSpent: number;
+  upgradesBought: number;
+  recoveryServices: number;
+}
+
 export interface FloatText {
   id: number;
   text: string;
@@ -86,6 +98,7 @@ export interface GameState {
   nextFloatId: number;
   nextEffectId: number;
   log: string[];
+  runStats: RunStats;
   upgrades: {
     attackPower: number;
     attackSpeed: number;
@@ -199,6 +212,7 @@ export function createInitialState(): GameState {
     nextFloatId: 1,
     nextEffectId: 1,
     log: ["The caravan waits at the dungeon stairs."],
+    runStats: createRunStats(),
     upgrades: {
       attackPower: 0,
       attackSpeed: 0,
@@ -433,10 +447,15 @@ function resolveTask(state: GameState, hero: Hero): GameState {
     const heroBonus = hero.id === "fighter" ? 3 : hero.id === "donkey" ? -3 : 0;
     const damage = Math.max(1, 8 + state.upgrades.attackPower * 3 + heroBonus);
     return damageEnemy(
-      addEffect(chargeHero(clearHeroTask(state, hero.id), hero.id, 22), attackEffectForHero(hero.id), "enemy", {
-        sourceId: hero.id,
-        targetId: hero.targetId ?? undefined,
-      }),
+      addEffect(
+        chargeHero(clearHeroTask(incrementHeroRunStat(state, "attacks", hero.id), hero.id), hero.id, 22),
+        attackEffectForHero(hero.id),
+        "enemy",
+        {
+          sourceId: hero.id,
+          targetId: hero.targetId ?? undefined,
+        },
+      ),
       hero.targetId,
       damage,
       "hit",
@@ -453,7 +472,7 @@ function resolveTask(state: GameState, hero: Hero): GameState {
       addEffect(
         chargeHero(
           {
-            ...addFloat(state, `+${repaired} aura`, "center"),
+            ...addFloat(incrementHeroRunStat(state, "repairs", hero.id), `+${repaired} aura`, "center"),
             mana: Math.max(0, state.mana - AURA_REPAIR_COST),
             aura: clamp(state.aura + repaired, 0, state.maxAura),
           },
@@ -476,7 +495,9 @@ function resolveSpecial(state: GameState, heroId: HeroId): GameState {
   const hero = state.party.find((member) => member.id === heroId);
   if (!hero || hero.hp <= 0 || hero.charge < SPECIAL_CHARGE_MAX) return state;
 
-  const resetState = updateHero(clearHeroTask(state, heroId), heroId, { charge: 0 });
+  const resetState = updateHero(clearHeroTask(incrementHeroRunStat(state, "specials", heroId), heroId), heroId, {
+    charge: 0,
+  });
   const baseState = addEffect(resetState, "special", "center", { sourceId: heroId });
 
   if (heroId === "fighter") {
@@ -519,9 +540,22 @@ function tickEnemies(state: GameState, dt: number): GameState {
     const hpDamage = aura > 0 ? Math.max(1, Math.ceil((rawDamage - auraBlock) * 0.45)) : rawDamage;
     aura = Math.max(0, aura - auraBlock);
 
-    party = party.map((hero) =>
-      hero.id === target?.id ? { ...hero, hp: clamp(hero.hp - hpDamage, 0, hero.maxHp) } : hero,
-    );
+    let didFall = false;
+    party = party.map((hero) => {
+      if (hero.id !== target?.id) return hero;
+      const hp = clamp(hero.hp - hpDamage, 0, hero.maxHp);
+      didFall = hero.hp > 0 && hp <= 0;
+      return { ...hero, hp };
+    });
+    if (didFall) {
+      next = {
+        ...next,
+        runStats: {
+          ...next.runStats,
+          fallen: next.runStats.fallen + 1,
+        },
+      };
+    }
     const attackText = enemy.attackLabel ? `${enemy.attackLabel}: ` : "";
     next = addEffect(
       addFloat(
@@ -562,6 +596,11 @@ function buyUpgrade(state: GameState, upgrade: UpgradeId): GameState {
   let next: GameState = {
     ...state,
     gold: state.gold - cost,
+    runStats: {
+      ...state.runStats,
+      goldSpent: state.runStats.goldSpent + cost,
+      upgradesBought: state.runStats.upgradesBought + 1,
+    },
     upgrades: { ...state.upgrades, [upgrade]: level + 1 },
   };
 
@@ -600,6 +639,7 @@ function buyShopService(state: GameState, service: ShopServiceId): GameState {
       {
         ...state,
         gold: state.gold - cost,
+        runStats: spendRecoveryGold(state, cost),
         party: state.party.map((hero) => (hero.hp > 0 ? { ...hero, hp: hero.maxHp } : hero)),
       },
       "The raid eats, argues, and patches up.",
@@ -612,6 +652,7 @@ function buyShopService(state: GameState, service: ShopServiceId): GameState {
     {
       ...state,
       gold: state.gold - cost,
+      runStats: spendRecoveryGold(state, cost),
       party: state.party.map((hero) => (hero.id === fallen.id ? { ...hero, hp: hero.maxHp } : hero)),
     },
     `${fallen.name} gets dragged back into formation.`,
@@ -721,9 +762,9 @@ function createDragonParts(): Enemy[] {
       sprite: 0,
       bossPart: "head",
       attackLabel: "Fire Breath",
-      hp: 92,
-      maxHp: 92,
-      damage: 18,
+      hp: 100,
+      maxHp: 100,
+      damage: 19,
       attackEvery: 4.8,
       attackTimer: 2.3,
     },
@@ -733,9 +774,9 @@ function createDragonParts(): Enemy[] {
       sprite: 0,
       bossPart: "left-claw",
       attackLabel: "Left Swipe",
-      hp: 54,
-      maxHp: 54,
-      damage: 9,
+      hp: 58,
+      maxHp: 58,
+      damage: 10,
       attackEvery: 2.7,
       attackTimer: 1.1,
     },
@@ -745,9 +786,9 @@ function createDragonParts(): Enemy[] {
       sprite: 0,
       bossPart: "right-claw",
       attackLabel: "Right Swipe",
-      hp: 54,
-      maxHp: 54,
-      damage: 10,
+      hp: 58,
+      maxHp: 58,
+      damage: 11,
       attackEvery: 3,
       attackTimer: 1.7,
     },
@@ -757,9 +798,9 @@ function createDragonParts(): Enemy[] {
       sprite: 0,
       bossPart: "wings",
       attackLabel: "Wing Burst",
-      hp: 66,
-      maxHp: 66,
-      damage: 12,
+      hp: 72,
+      maxHp: 72,
+      damage: 13,
       attackEvery: 5.4,
       attackTimer: 3.2,
     },
@@ -773,9 +814,9 @@ function createDragonHeart(): Enemy {
     sprite: 0,
     bossPart: "heart",
     attackLabel: "Heartflare",
-    hp: 84,
-    maxHp: 84,
-    damage: 14,
+    hp: 92,
+    maxHp: 92,
+    damage: 16,
     attackEvery: 3.8,
     attackTimer: 1.4,
   };
@@ -845,6 +886,27 @@ function chargeHero(state: GameState, heroId: HeroId, amount: number): GameState
   });
 }
 
+function incrementHeroRunStat(state: GameState, stat: "attacks" | "repairs" | "specials", heroId: HeroId): GameState {
+  return {
+    ...state,
+    runStats: {
+      ...state.runStats,
+      [stat]: {
+        ...state.runStats[stat],
+        [heroId]: state.runStats[stat][heroId] + 1,
+      },
+    },
+  };
+}
+
+function spendRecoveryGold(state: GameState, cost: number): RunStats {
+  return {
+    ...state.runStats,
+    goldSpent: state.runStats.goldSpent + cost,
+    recoveryServices: state.runStats.recoveryServices + 1,
+  };
+}
+
 function ageFloats(state: GameState, dt: number): GameState {
   return {
     ...state,
@@ -908,13 +970,34 @@ function cloneParty(party: Hero[]) {
   return party.map((hero) => ({ ...hero }));
 }
 
+function createRunStats(): RunStats {
+  return {
+    attacks: createHeroCount(),
+    repairs: createHeroCount(),
+    specials: createHeroCount(),
+    fallen: 0,
+    goldSpent: 0,
+    upgradesBought: 0,
+    recoveryServices: 0,
+  };
+}
+
+function createHeroCount(): HeroCount {
+  return {
+    fighter: 0,
+    wizard: 0,
+    bard: 0,
+    donkey: 0,
+  };
+}
+
 function encounterName(floor: number) {
   if (floor >= 10) return "The Toll Dragon";
   const names = ["Bone Toll", "Mold Shrine", "Rust Hall", "Candle Pit", "Last Stair"];
   return names[(floor - 1) % names.length];
 }
 
-function upgradeLabel(upgrade: UpgradeId) {
+export function upgradeLabel(upgrade: UpgradeId) {
   return {
     attackPower: "Attack Power",
     attackSpeed: "Attack Speed",

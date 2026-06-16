@@ -8,6 +8,7 @@ import {
   reducer,
   shopServiceCost,
   specialForHero,
+  upgradeLabel,
   upgradeCost,
   type CombatEffect,
   type Enemy,
@@ -15,6 +16,7 @@ import {
   type HeroId,
   type Hero,
   type RoomEvent,
+  type RunStats,
   type ShopServiceId,
   type Task,
   type UpgradeId,
@@ -38,6 +40,12 @@ const TASK_HOTKEY_LABELS: Record<Task, string> = {
   "repair-aura": "R",
 };
 const SPECIAL_HOTKEY_LABEL = "S";
+const HERO_NAMES: Record<HeroId, string> = {
+  fighter: "Fighter",
+  wizard: "Wizard",
+  bard: "Bard",
+  donkey: "Donkey",
+};
 const SHOP_SERVICES: { id: ShopServiceId; label: string; note: string }[] = [
   { id: "healAll", label: "Full Heal", note: "Restore all living raiders to full HP" },
   { id: "reviveOne", label: "Revive Raider", note: "Bring one fallen raider back at full HP" },
@@ -99,6 +107,19 @@ interface RunSummary {
   gold: number;
   result: RunResult;
   score: number;
+  stats: RunRecapStats;
+}
+
+interface RunRecapStats {
+  fallen: number;
+  favoriteHero: string;
+  goldSpent: number;
+  highestUpgrade: string;
+  mostAttacks: string;
+  mostRepairs: string;
+  recoveryServices: number;
+  specialsUsed: number;
+  upgradesBought: number;
 }
 
 interface SpecialCinematic {
@@ -174,6 +195,7 @@ export default function CaravanGame() {
       gold: state.gold,
       result: state.phase,
       score: state.score,
+      stats: buildRunRecapStats(state),
     };
     setSummary(runSummary);
     setScreen("recap");
@@ -431,6 +453,44 @@ function RecapScreen({
           <span>Gold {summary.gold}</span>
           <span>{formatDuration(summary.durationMs)}</span>
         </div>
+        <div className="recap-details">
+          <span>
+            <strong>Fallen</strong>
+            {summary.stats.fallen}
+          </span>
+          <span>
+            <strong>Favorite</strong>
+            {summary.stats.favoriteHero}
+          </span>
+          <span>
+            <strong>Most Attacks</strong>
+            {summary.stats.mostAttacks}
+          </span>
+          <span>
+            <strong>Most Repairs</strong>
+            {summary.stats.mostRepairs}
+          </span>
+          <span>
+            <strong>Specials</strong>
+            {summary.stats.specialsUsed}
+          </span>
+          <span>
+            <strong>Gold Spent</strong>
+            {summary.stats.goldSpent}
+          </span>
+          <span>
+            <strong>Recovery</strong>
+            {summary.stats.recoveryServices}
+          </span>
+          <span>
+            <strong>Upgrades</strong>
+            {summary.stats.upgradesBought}
+          </span>
+          <span>
+            <strong>Best Upgrade</strong>
+            {summary.stats.highestUpgrade}
+          </span>
+        </div>
         <p className="title-session">
           {session.authenticated ? `Score submitted for ${session.handle}` : "Unranked run - launch from the Portal to submit scores"}
         </p>
@@ -468,6 +528,45 @@ function formatDuration(durationMs: number) {
   const seconds = Math.max(0, Math.floor(durationMs / 1000));
   const minutes = Math.floor(seconds / 60);
   return `${minutes}:${String(seconds % 60).padStart(2, "0")}`;
+}
+
+function buildRunRecapStats(state: GameState): RunRecapStats {
+  const totalActions = combineHeroCounts(state.runStats);
+  const highestUpgrade = bestUpgrade(state.upgrades);
+  return {
+    fallen: state.runStats.fallen,
+    favoriteHero: heroCountLabel(totalActions),
+    goldSpent: state.runStats.goldSpent,
+    highestUpgrade,
+    mostAttacks: heroCountLabel(state.runStats.attacks),
+    mostRepairs: heroCountLabel(state.runStats.repairs),
+    recoveryServices: state.runStats.recoveryServices,
+    specialsUsed: sumHeroCounts(state.runStats.specials),
+    upgradesBought: state.runStats.upgradesBought,
+  };
+}
+
+function combineHeroCounts(stats: RunStats) {
+  return {
+    fighter: stats.attacks.fighter + stats.repairs.fighter + stats.specials.fighter,
+    wizard: stats.attacks.wizard + stats.repairs.wizard + stats.specials.wizard,
+    bard: stats.attacks.bard + stats.repairs.bard + stats.specials.bard,
+    donkey: stats.attacks.donkey + stats.repairs.donkey + stats.specials.donkey,
+  };
+}
+
+function heroCountLabel(counts: Record<HeroId, number>) {
+  const [heroId, count] = (Object.entries(counts) as [HeroId, number][]).sort((a, b) => b[1] - a[1])[0];
+  return count > 0 ? `${HERO_NAMES[heroId]} ${count}` : "None";
+}
+
+function sumHeroCounts(counts: Record<HeroId, number>) {
+  return Object.values(counts).reduce((total, count) => total + count, 0);
+}
+
+function bestUpgrade(upgrades: GameState["upgrades"]) {
+  const [upgrade, level] = (Object.entries(upgrades) as [UpgradeId, number][]).sort((a, b) => b[1] - a[1])[0];
+  return level > 0 ? `${upgradeLabel(upgrade)} ${level}` : "None";
 }
 
 function TopBar({ state }: { state: GameState }) {
