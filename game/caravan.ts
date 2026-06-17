@@ -1,4 +1,13 @@
-export type Phase = "ready" | "combat" | "story" | "chest" | "shop" | "game-over" | "won";
+export type Phase =
+  | "ready"
+  | "combat"
+  | "room-clear"
+  | "story"
+  | "chest"
+  | "event-clear"
+  | "shop"
+  | "game-over"
+  | "won";
 export type HeroId = "fighter" | "wizard" | "bard" | "donkey";
 export type RoomType = "combat" | "story" | "chest";
 export type ShopServiceId = "healAll" | "reviveOne";
@@ -98,6 +107,7 @@ export interface GameState {
   nextFloatId: number;
   nextEffectId: number;
   log: string[];
+  lastReward: number;
   runStats: RunStats;
   upgrades: {
     attackPower: number;
@@ -123,6 +133,7 @@ export type Action =
   | { type: "buy"; upgrade: UpgradeId }
   | { type: "buy-service"; service: ShopServiceId }
   | { type: "claim-room" }
+  | { type: "finish-room-clear" }
   | { type: "next-floor" }
   | { type: "restart" };
 
@@ -212,6 +223,7 @@ export function createInitialState(): GameState {
     nextFloatId: 1,
     nextEffectId: 1,
     log: ["The caravan waits at the dungeon stairs."],
+    lastReward: 0,
     runStats: createRunStats(),
     upgrades: {
       attackPower: 0,
@@ -250,6 +262,8 @@ export function reducer(state: GameState, action: Action): GameState {
       return buyShopService(state, action.service);
     case "claim-room":
       return claimRoom(state);
+    case "finish-room-clear":
+      return finishRoomClear(state);
     case "next-floor":
       return startRoom(state, state.floor + 1);
   }
@@ -285,6 +299,7 @@ function startCombat(state: GameState, floor: number): GameState {
     floats: [],
     effects: [],
     log: [`Floor ${floor}: ${encounterName(floor)} blocks the way.`],
+    lastReward: 0,
   };
 }
 
@@ -327,6 +342,7 @@ function startEventRoom(state: GameState, floor: number, roomEvent: RoomEvent): 
       progress: 0,
     })),
     log: [`Floor ${floor}: ${roomEvent.title}.`],
+    lastReward: 0,
   };
 }
 
@@ -380,24 +396,19 @@ function stepCombat(state: GameState, dt: number): GameState {
 
     const reward = battleReward(next.floor);
     const score = next.score + 100 * next.floor + Math.round(next.aura) + Math.round(next.mana);
-    if (next.floor >= next.maxFloor) {
-      return {
-        ...next,
-        phase: "won",
-        enemies: [],
-        focusedEnemyId: null,
-        gold: next.gold + reward,
-        score,
-        log: ["The final gate opens. The caravan survives.", ...next.log].slice(0, 5),
-      };
-    }
     return {
       ...next,
-      phase: "shop",
-      enemies: [],
+      phase: "room-clear",
       focusedEnemyId: null,
       gold: next.gold + reward,
+      party: next.party.map((hero) => ({
+        ...hero,
+        task: null,
+        targetId: null,
+        progress: 0,
+      })),
       score,
+      lastReward: reward,
       log: [`Victory. Looted ${reward} gold.`, ...next.log].slice(0, 5),
     };
   }
@@ -405,25 +416,38 @@ function stepCombat(state: GameState, dt: number): GameState {
   return next;
 }
 
-function claimRoom(state: GameState): GameState {
-  if (!state.roomEvent || (state.phase !== "story" && state.phase !== "chest")) return state;
-  const score = state.score + 70 * state.floor + state.roomEvent.reward;
+function finishRoomClear(state: GameState): GameState {
+  if (state.phase !== "room-clear" && state.phase !== "event-clear") return state;
   if (state.floor >= state.maxFloor) {
     return {
       ...state,
       phase: "won",
-      gold: state.gold + state.roomEvent.reward,
-      score,
+      enemies: [],
+      focusedEnemyId: null,
       roomEvent: null,
+      lastReward: 0,
       log: ["The final gate opens. The caravan survives.", ...state.log].slice(0, 5),
     };
   }
   return {
     ...state,
     phase: "shop",
+    enemies: [],
+    focusedEnemyId: null,
+    roomEvent: null,
+    lastReward: 0,
+  };
+}
+
+function claimRoom(state: GameState): GameState {
+  if (!state.roomEvent || (state.phase !== "story" && state.phase !== "chest")) return state;
+  const score = state.score + 70 * state.floor + state.roomEvent.reward;
+  return {
+    ...state,
+    phase: "event-clear",
     gold: state.gold + state.roomEvent.reward,
     score,
-    roomEvent: null,
+    lastReward: state.roomEvent.reward,
     log: [`Collected ${state.roomEvent.reward} gold.`, ...state.log].slice(0, 5),
   };
 }

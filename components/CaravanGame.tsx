@@ -175,6 +175,8 @@ export default function CaravanGame() {
   const [screen, setScreen] = useState<Screen>("title");
   const [combatIntro, setCombatIntro] = useState<{ floor: number; label: string } | null>(null);
   const [specialCinematic, setSpecialCinematic] = useState<SpecialCinematic | null>(null);
+  const [lootCount, setLootCount] = useState(0);
+  const [clearReady, setClearReady] = useState(false);
   const [sfxEnabled, setSfxEnabled] = useState(true);
   const [sfxLoaded, setSfxLoaded] = useState(false);
   const [musicEnabled, setMusicEnabled] = useState(true);
@@ -279,10 +281,33 @@ export default function CaravanGame() {
 
   useEffect(() => {
     if (state.phase === lastPhase.current) return;
+    if (state.phase === "room-clear" || state.phase === "event-clear") playSfx("shop");
     if (state.phase === "won") playSfx("victory");
     if (state.phase === "game-over") playSfx("error");
     lastPhase.current = state.phase;
   }, [state.phase]);
+
+  useEffect(() => {
+    if (screen !== "playing" || (state.phase !== "room-clear" && state.phase !== "event-clear")) return;
+    setLootCount(0);
+    setClearReady(false);
+    const tickCount = Math.max(1, Math.min(18, state.lastReward));
+    const tickTimers = Array.from({ length: tickCount }, (_, index) =>
+      window.setTimeout(() => {
+        const progress = (index + 1) / tickCount;
+        setLootCount(Math.round(state.lastReward * progress));
+        playSfx("shop");
+      }, 320 + index * 55),
+    );
+    const readyTimer = window.setTimeout(() => {
+      setLootCount(state.lastReward);
+      setClearReady(true);
+    }, 1350);
+    return () => {
+      window.clearTimeout(readyTimer);
+      tickTimers.forEach(window.clearTimeout);
+    };
+  }, [screen, state.phase, state.floor, state.lastReward]);
 
   useEffect(() => {
     if (screen !== "playing" || state.phase !== "combat") {
@@ -506,8 +531,10 @@ export default function CaravanGame() {
         <CenterStage
           state={state}
           dispatch={dispatch}
+          clearReady={clearReady}
           combatIntro={combatIntro}
           combatIntroActive={combatIntroActive}
+          lootCount={lootCount}
           onCommandSound={playSfx}
           onSpecial={triggerSpecial}
           specialCinematic={specialCinematic}
@@ -880,7 +907,7 @@ function EnemyPanel({
   dispatch: React.Dispatch<Parameters<typeof reducer>[1]>;
   onCommandSound: (sound: SoundId) => void;
 }) {
-  if (state.phase === "shop" || state.phase === "story" || state.phase === "chest") {
+  if (state.phase === "shop" || state.phase === "story" || state.phase === "chest" || state.phase === "event-clear") {
     return (
       <aside className="panel enemy-panel">
         <h2>{state.phase === "shop" ? "Armory" : "Quiet Room"}</h2>
@@ -946,16 +973,20 @@ function EnemyCard({
 function CenterStage({
   state,
   dispatch,
+  clearReady,
   combatIntro,
   combatIntroActive,
+  lootCount,
   onCommandSound,
   onSpecial,
   specialCinematic,
 }: {
   state: GameState;
   dispatch: React.Dispatch<Parameters<typeof reducer>[1]>;
+  clearReady: boolean;
   combatIntro: { floor: number; label: string } | null;
   combatIntroActive: boolean;
+  lootCount: number;
   onCommandSound: (sound: SoundId) => void;
   onSpecial: (hero: Hero) => void;
   specialCinematic: SpecialCinematic | null;
@@ -963,11 +994,22 @@ function CenterStage({
   const selected = state.party.find((hero) => hero.id === state.selectedHero);
   const specialReady = selected ? selected.hp > 0 && selected.charge >= SPECIAL_CHARGE_MAX : false;
   const bossEnemies = state.enemies.filter((enemy) => enemy.bossPart);
-  if (state.phase === "story" || state.phase === "chest") {
+  if (state.phase === "story" || state.phase === "chest" || state.phase === "event-clear") {
     return (
       <section className="center-stage center-stage--shop">
         <RouteMap state={state} />
-        <EventRoom event={state.roomEvent} dispatch={dispatch} onCommandSound={onCommandSound} />
+        {state.phase === "event-clear" ? (
+          <EventClearRoom
+            clearReady={clearReady}
+            dispatch={dispatch}
+            event={state.roomEvent}
+            loot={lootCount}
+            onCommandSound={onCommandSound}
+            reward={state.lastReward}
+          />
+        ) : (
+          <EventRoom event={state.roomEvent} dispatch={dispatch} onCommandSound={onCommandSound} />
+        )}
       </section>
     );
   }
@@ -983,7 +1025,12 @@ function CenterStage({
 
   return (
     <section className="center-stage">
-      <div className="dungeon-lane" data-boss={bossEnemies.length > 0} data-intro={combatIntroActive}>
+      <div
+        className="dungeon-lane"
+        data-boss={bossEnemies.length > 0}
+        data-clear={state.phase === "room-clear"}
+        data-intro={combatIntroActive}
+      >
         <div className="battle-status">
           <RouteMap state={state} />
           <div className="resource-bank">
@@ -991,7 +1038,7 @@ function CenterStage({
             <Meter label="Mana" value={state.mana} max={state.maxMana} tone="violet" />
           </div>
         </div>
-        <div className="party-line" data-intro={combatIntroActive}>
+        <div className="party-line" data-clear={state.phase === "room-clear"} data-intro={combatIntroActive}>
           {state.party.map((hero) => (
             <div className="standing-unit" key={hero.id} data-down={hero.hp <= 0} data-task={hero.task ?? "idle"}>
               <Sprite index={heroSpriteIndex(hero)} sheet={hero.spriteSheet} />
@@ -1008,6 +1055,19 @@ function CenterStage({
         </div>
         <EffectLayer effects={state.effects} state={state} />
         {combatIntro && <CombatIntro floor={combatIntro.floor} label={combatIntro.label} />}
+        {state.phase === "room-clear" && (
+          <RoomClearOverlay
+            clearReady={clearReady}
+            final={state.floor >= state.maxFloor}
+            floor={state.floor}
+            loot={lootCount}
+            onContinue={() => {
+              onCommandSound("select");
+              dispatch({ type: "finish-room-clear" });
+            }}
+            reward={state.lastReward}
+          />
+        )}
         {specialCinematic && <SpecialOverlay cinematic={specialCinematic} />}
         {bossEnemies.length > 0 ? (
           <DragonBoss
@@ -1087,6 +1147,27 @@ function CenterStage({
           </div>
         </div>
       )}
+      {state.phase === "room-clear" && (
+        <div className="command-strip command-strip--clear">
+          <div className="selected-readout">
+            {clearReady
+              ? state.floor >= state.maxFloor
+                ? "The final gate is open"
+                : "Room clear · continue when ready"
+              : "Counting loot"}
+          </div>
+          <button
+            className="primary-command"
+            disabled={!clearReady}
+            onClick={() => {
+              onCommandSound("select");
+              dispatch({ type: "finish-room-clear" });
+            }}
+          >
+            {state.floor >= state.maxFloor ? "Finish Run" : "Continue to Armory"}
+          </button>
+        </div>
+      )}
       {(state.phase === "game-over" || state.phase === "won") && (
         <div className="end-panel">
           <h1>{state.phase === "won" ? "Caravan Clear" : "Perma Death"}</h1>
@@ -1097,6 +1178,46 @@ function CenterStage({
         </div>
       )}
     </section>
+  );
+}
+
+function RoomClearOverlay({
+  clearReady,
+  final,
+  floor,
+  loot,
+  onContinue,
+  reward,
+  subtitle,
+  title,
+}: {
+  clearReady: boolean;
+  final: boolean;
+  floor: number;
+  loot: number;
+  onContinue: () => void;
+  reward: number;
+  subtitle?: string;
+  title?: string;
+}) {
+  return (
+    <div className="room-clear-overlay" aria-live="polite">
+      <div className="confetti-field" aria-hidden="true">
+        {Array.from({ length: 18 }, (_, index) => (
+          <span key={index} style={{ "--i": index } as CSSProperties} />
+        ))}
+      </div>
+      <span>{subtitle ?? (final ? "Trail Cleared" : `Floor ${floor} Cleared`)}</span>
+      <strong>{title ?? (final ? "Caravan Clear" : "Victory")}</strong>
+      <div className="loot-counter">
+        <span>Loot</span>
+        <b>{loot}</b>
+        <small>{reward > 0 ? `+${reward}g` : "No gold"}</small>
+      </div>
+      <button className="clear-continue" disabled={!clearReady} onClick={onContinue}>
+        {clearReady ? "Continue" : "Counting"}
+      </button>
+    </div>
   );
 }
 
@@ -1210,6 +1331,41 @@ function EventRoom({
       >
         {event.type === "chest" ? "Take Loot" : "Continue"}
       </button>
+    </div>
+  );
+}
+
+function EventClearRoom({
+  clearReady,
+  dispatch,
+  event,
+  loot,
+  onCommandSound,
+  reward,
+}: {
+  clearReady: boolean;
+  dispatch: React.Dispatch<Parameters<typeof reducer>[1]>;
+  event: RoomEvent | null;
+  loot: number;
+  onCommandSound: (sound: SoundId) => void;
+  reward: number;
+}) {
+  const isChest = event?.type === "chest";
+  return (
+    <div className="event-room event-room--clear" data-type={event?.type ?? "story"}>
+      <RoomClearOverlay
+        clearReady={clearReady}
+        final={false}
+        floor={0}
+        loot={loot}
+        onContinue={() => {
+          onCommandSound("select");
+          dispatch({ type: "finish-room-clear" });
+        }}
+        reward={reward}
+        subtitle={isChest ? "Chest Opened" : "Story Bonus"}
+        title={isChest ? "Loot Found" : "Tale Told"}
+      />
     </div>
   );
 }

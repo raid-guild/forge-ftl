@@ -735,6 +735,16 @@ button {
   animation: enemy-enter 1450ms cubic-bezier(0.2, 0.9, 0.25, 1.25) both;
 }
 
+.party-line[data-clear="true"] {
+  animation: party-exit 1450ms cubic-bezier(0.28, 0.72, 0.38, 1) both;
+}
+
+.dungeon-lane[data-clear="true"] .enemy-line,
+.dungeon-lane[data-clear="true"] .dragon-boss {
+  opacity: 0.24;
+  transition: opacity 450ms ease;
+}
+
 .combat-intro {
   pointer-events: none;
   position: absolute;
@@ -759,6 +769,122 @@ button {
   line-height: 1;
   text-shadow: 0 0 16px rgba(225, 185, 85, 0.55);
   animation: intro-pop 540ms ease-out both;
+}
+
+.room-clear-overlay {
+  pointer-events: auto;
+  position: absolute;
+  inset: 0;
+  z-index: 6;
+  display: grid;
+  place-content: center;
+  gap: 8px;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 50% 45%, rgba(225, 185, 85, 0.2), transparent 34%),
+    linear-gradient(180deg, rgba(5, 4, 7, 0.04), rgba(5, 4, 7, 0.28));
+  color: var(--gold);
+  text-align: center;
+  text-transform: uppercase;
+  animation: room-clear-fade 1850ms ease-out both;
+}
+
+.room-clear-overlay span {
+  color: var(--paper);
+  font-size: 13px;
+  text-shadow: 0 0 14px rgba(5, 4, 7, 0.85);
+}
+
+.room-clear-overlay strong {
+  font-size: 44px;
+  line-height: 1;
+  text-shadow: 0 0 18px rgba(225, 185, 85, 0.72);
+  animation: room-clear-title 1850ms cubic-bezier(0.18, 0.9, 0.24, 1.12) both;
+}
+
+.loot-counter {
+  justify-self: center;
+  min-width: 168px;
+  display: grid;
+  grid-template-columns: auto auto auto;
+  align-items: baseline;
+  gap: 8px;
+  padding: 8px 12px;
+  border: 1px solid rgba(225, 185, 85, 0.5);
+  background:
+    linear-gradient(90deg, rgba(225, 185, 85, 0.14), rgba(5, 4, 7, 0.5), rgba(225, 185, 85, 0.14)),
+    rgba(5, 4, 7, 0.72);
+  box-shadow: 0 0 20px rgba(225, 185, 85, 0.16);
+  animation: loot-pop 1850ms ease-out both;
+}
+
+.loot-counter span,
+.loot-counter small {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.loot-counter b {
+  min-width: 42px;
+  color: var(--gold);
+  font-size: 24px;
+  text-align: right;
+  text-shadow: 0 0 12px rgba(225, 185, 85, 0.66);
+}
+
+.confetti-field {
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+}
+
+.confetti-field span {
+  position: absolute;
+  left: calc(8% + (var(--i) * 5%));
+  top: -16px;
+  width: 7px;
+  height: 13px;
+  background: var(--gold);
+  box-shadow: 0 0 8px rgba(225, 185, 85, 0.55);
+  transform: rotate(calc(var(--i) * 19deg));
+  animation: confetti-fall 1650ms ease-in both;
+  animation-delay: calc(var(--i) * 28ms);
+}
+
+.confetti-field span:nth-child(3n) {
+  background: var(--blue);
+}
+
+.confetti-field span:nth-child(3n + 1) {
+  background: var(--red);
+}
+
+.confetti-field span:nth-child(4n) {
+  width: 10px;
+  height: 10px;
+}
+
+.clear-continue {
+  justify-self: center;
+  min-width: 168px;
+  min-height: 42px;
+  border: 1px solid rgba(225, 185, 85, 0.68);
+  background: #241c19;
+  color: var(--gold);
+  cursor: pointer;
+  text-transform: uppercase;
+  animation: clear-continue-in 420ms ease-out both;
+}
+
+.clear-continue:disabled {
+  cursor: default;
+  opacity: 0.48;
+}
+
+.clear-continue:not(:disabled):hover {
+  border-color: var(--paper);
+  color: var(--paper);
+  background: #342820;
 }
 
 .special-overlay {
@@ -1187,6 +1313,89 @@ button {
   }
 }
 
+@keyframes party-exit {
+  0% {
+    transform: translate(0, 0);
+    opacity: 1;
+  }
+  24% {
+    transform: translate(18px, -12px);
+  }
+  46% {
+    transform: translate(42px, 0);
+  }
+  66% {
+    transform: translate(72px, -9px);
+  }
+  100% {
+    transform: translate(124px, 0);
+    opacity: 0;
+  }
+}
+
+@keyframes room-clear-fade {
+  0% {
+    opacity: 0;
+  }
+  12%,
+  100% {
+    opacity: 1;
+  }
+}
+
+@keyframes room-clear-title {
+  0% {
+    transform: translateY(18px) scale(0.82);
+    opacity: 0;
+  }
+  18% {
+    transform: translateY(0) scale(1.08);
+    opacity: 1;
+  }
+  72%,
+  100% {
+    transform: translateY(0) scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes loot-pop {
+  0% {
+    transform: translateY(12px) scale(0.92);
+    opacity: 0;
+  }
+  18%,
+  100% {
+    transform: translateY(0) scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes clear-continue-in {
+  from {
+    transform: translateY(8px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@keyframes confetti-fall {
+  0% {
+    transform: translateY(0) rotate(calc(var(--i) * 19deg));
+    opacity: 0;
+  }
+  10% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(92vh) translateX(calc((var(--i) - 9) * 4px)) rotate(calc(var(--i) * 53deg));
+    opacity: 0;
+  }
+}
+
 @keyframes dragon-heartbeat {
   from {
     transform: translate(-50%, -50%) scale(0.88);
@@ -1305,6 +1514,11 @@ button {
   padding: 14px;
 }
 
+.command-strip--clear {
+  min-height: 58px;
+  align-content: center;
+}
+
 .selected-readout {
   color: var(--muted);
   font-size: 13px;
@@ -1373,12 +1587,17 @@ button {
 }
 
 .event-room {
+  position: relative;
   align-content: center;
   min-height: 360px;
   background:
     linear-gradient(180deg, rgba(5, 4, 7, 0.06), rgba(5, 4, 7, 0.7)),
     url("/art/story-background.png") center / cover no-repeat,
     rgba(27, 26, 32, 0.92);
+}
+
+.event-room--clear {
+  overflow: hidden;
 }
 
 .event-room[data-type="story"] {
