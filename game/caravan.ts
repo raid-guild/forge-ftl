@@ -843,8 +843,8 @@ function battleReward(floor: number) {
 
 function rollRoomType(): RoomType {
   const roll = Math.random();
-  if (roll < 0.05) return "chest";
-  if (roll < 0.15) return "story";
+  if (roll < 0.1) return "chest";
+  if (roll < 0.2) return "story";
   return "combat";
 }
 

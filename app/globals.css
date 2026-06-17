@@ -1571,6 +1571,19 @@ button {
   }
 }
 
+@keyframes special-ready-glow {
+  from {
+    box-shadow:
+      0 0 12px rgba(225, 185, 85, 0.16),
+      inset 0 0 14px rgba(225, 185, 85, 0.06);
+  }
+  to {
+    box-shadow:
+      0 0 24px rgba(225, 185, 85, 0.34),
+      inset 0 0 22px rgba(225, 185, 85, 0.12);
+  }
+}
+
 .command-strip {
   min-height: 132px;
   display: grid;
@@ -1602,10 +1615,51 @@ button {
 }
 
 .task-grid .special-command {
+  position: relative;
+  overflow: hidden;
   grid-column: 1 / -1;
   background:
     linear-gradient(90deg, rgba(225, 185, 85, 0.16), rgba(151, 92, 221, 0.12)),
     #251b18;
+}
+
+.special-command .special-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: var(--special-charge);
+  min-width: 0;
+  background:
+    linear-gradient(90deg, rgba(151, 92, 221, 0.34), rgba(225, 185, 85, 0.24)),
+    rgba(151, 92, 221, 0.12);
+  transition: width 180ms ease-out;
+}
+
+.special-command > span:not(.special-fill),
+.special-command > small,
+.special-command > kbd {
+  position: relative;
+  z-index: 1;
+}
+
+.special-command small {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.task-grid .special-command[data-ready="true"] {
+  border-color: var(--gold);
+  color: var(--paper);
+  box-shadow:
+    0 0 18px rgba(225, 185, 85, 0.24),
+    inset 0 0 18px rgba(225, 185, 85, 0.08);
+  animation: special-ready-glow 880ms ease-in-out infinite alternate;
+}
+
+.special-command[data-ready="true"] .special-fill {
+  width: 100%;
+  background:
+    linear-gradient(90deg, rgba(151, 92, 221, 0.42), rgba(225, 185, 85, 0.34)),
+    rgba(225, 185, 85, 0.12);
 }
 
 .item-strip {

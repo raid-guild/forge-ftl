@@ -1188,14 +1188,18 @@ function CenterStage({
             ))}
             <button
               className="special-command"
+              data-ready={specialReady}
               disabled={combatIntroActive || !selected || !specialReady}
+              style={{ "--special-charge": `${selected ? Math.round(selected.charge) : 0}%` } as CSSProperties}
               onClick={() => {
                 if (!selected) return;
                 onCommandSound("task");
                 onSpecial(selected);
               }}
             >
+              <span className="special-fill" aria-hidden="true" />
               <span>{selected ? specialForHero(selected.id).label : "Special"}</span>
+              <small>{selected ? `${Math.round(selected.charge)}%` : "0%"}</small>
               <kbd className="key-hint">({SPECIAL_HOTKEY_LABEL})</kbd>
             </button>
           </div>
