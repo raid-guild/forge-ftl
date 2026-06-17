@@ -9,6 +9,7 @@ export type Phase =
   | "game-over"
   | "won";
 export type HeroId = "fighter" | "wizard" | "bard" | "donkey";
+export type ItemId = "healthPotion" | "auraCharm" | "revivePotion" | "manaFlask" | "bloodlustPotion";
 export type RoomType = "combat" | "story" | "chest";
 export type ShopServiceId = "healAll" | "reviveOne";
 export type SpecialId = "shieldBreaker" | "chainSpark" | "purpleEncore" | "panicKick";
@@ -85,6 +86,8 @@ export interface RoomEvent {
   title: string;
   body: string;
   reward: number;
+  items?: ItemId[];
+  jackpot?: boolean;
 }
 
 export interface GameState {
@@ -96,6 +99,7 @@ export interface GameState {
   aura: number;
   maxAura: number;
   gold: number;
+  items: Record<ItemId, number>;
   score: number;
   selectedHero: HeroId | null;
   focusedEnemyId: string | null;
@@ -130,11 +134,14 @@ export type Action =
   | { type: "focus-enemy"; enemyId: string }
   | { type: "assign"; task: Task }
   | { type: "special"; heroId: HeroId }
+  | { type: "use-item"; item: ItemId }
   | { type: "buy"; upgrade: UpgradeId }
+  | { type: "buy-item"; item: ItemId }
   | { type: "buy-service"; service: ShopServiceId }
   | { type: "claim-room" }
   | { type: "finish-room-clear" }
   | { type: "next-floor" }
+  | { type: "debug-room"; room: RoomType }
   | { type: "restart" };
 
 const AURA_REPAIR_COST = 10;
@@ -143,6 +150,21 @@ const BASE_GOLD_REWARD = 10;
 const GOLD_PER_FLOOR = 4;
 const STORY_REWARD_MULTIPLIER = 0.7;
 const CHEST_REWARD_MULTIPLIER = 1.3;
+export const MAX_ITEMS = 5;
+export const ITEM_LABELS: Record<ItemId, string> = {
+  healthPotion: "Health",
+  auraCharm: "Aura",
+  revivePotion: "Revive",
+  manaFlask: "Mana",
+  bloodlustPotion: "Bloodlust",
+};
+export const ITEM_NOTES: Record<ItemId, string> = {
+  healthPotion: "Heal the selected living raider",
+  auraCharm: "Restore aura immediately",
+  revivePotion: "Revive the selected fallen raider",
+  manaFlask: "Refill mana immediately",
+  bloodlustPotion: "Fill selected raider SP",
+};
 const TASKS: Record<Task, { seconds: number; label: string }> = {
   attack: { seconds: 1.05, label: "Attack" },
   "repair-aura": { seconds: 1.35, label: "Repair Aura" },
@@ -212,6 +234,7 @@ export function createInitialState(): GameState {
     aura: 42,
     maxAura: 42,
     gold: 0,
+    items: createEmptyItems(),
     score: 0,
     selectedHero: "fighter",
     focusedEnemyId: null,
@@ -254,10 +277,14 @@ export function reducer(state: GameState, action: Action): GameState {
       return assignTask(state, action.task);
     case "special":
       return resolveSpecial(state, action.heroId);
+    case "use-item":
+      return useItem(state, action.item);
     case "tick":
       return state.phase === "combat" ? stepCombat(state, action.dt) : ageFloats(state, action.dt);
     case "buy":
       return buyUpgrade(state, action.upgrade);
+    case "buy-item":
+      return buyItem(state, action.item);
     case "buy-service":
       return buyShopService(state, action.service);
     case "claim-room":
@@ -266,7 +293,15 @@ export function reducer(state: GameState, action: Action): GameState {
       return finishRoomClear(state);
     case "next-floor":
       return startRoom(state, state.floor + 1);
+    case "debug-room":
+      return startDebugRoom(state, action.room);
   }
+}
+
+function startDebugRoom(state: GameState, room: RoomType): GameState {
+  if (room === "story") return startStoryRoom(state, state.floor);
+  if (room === "chest") return startChestRoom(state, state.floor);
+  return startCombat(state, state.floor);
 }
 
 function startRoom(state: GameState, floor: number, forceCombat = false): GameState {
@@ -313,12 +348,18 @@ function startStoryRoom(state: GameState, floor: number): GameState {
 }
 
 function startChestRoom(state: GameState, floor: number): GameState {
-  const reward = Math.max(1, Math.round(battleReward(floor) * CHEST_REWARD_MULTIPLIER));
+  const chest = rollChestReward(floor);
   return startEventRoom(state, floor, {
     type: "chest",
-    reward,
-    title: "Suspiciously Labeled Chest",
-    body: "The label says FREE GOLD, DEFINITELY NOT CURSED. The bard checks the spelling, shrugs, and opens it anyway.",
+    reward: chest.gold,
+    items: chest.items,
+    jackpot: chest.jackpot,
+    title: chest.jackpot ? "Jackpot Chest" : chest.items.length > 0 ? "Loaded Chest" : "Suspiciously Labeled Chest",
+    body: chest.jackpot
+      ? "The latch pops, the coins sing, and the donkey briefly understands compound interest."
+      : chest.items.length > 0
+        ? "The chest rattles like a tiny armory. The party finds gold and something bottled by someone with alarming handwriting."
+        : "The label says FREE GOLD, DEFINITELY NOT CURSED. The bard checks the spelling, shrugs, and opens it anyway.",
   });
 }
 
@@ -442,14 +483,76 @@ function finishRoomClear(state: GameState): GameState {
 function claimRoom(state: GameState): GameState {
   if (!state.roomEvent || (state.phase !== "story" && state.phase !== "chest")) return state;
   const score = state.score + 70 * state.floor + state.roomEvent.reward;
+  const items = addItems(state.items, state.roomEvent.items ?? []);
+  const itemText = (state.roomEvent.items ?? []).length > 0 ? ` Found ${itemListLabel(state.roomEvent.items ?? [])}.` : "";
   return {
     ...state,
     phase: "event-clear",
     gold: state.gold + state.roomEvent.reward,
+    items,
     score,
     lastReward: state.roomEvent.reward,
-    log: [`Collected ${state.roomEvent.reward} gold.`, ...state.log].slice(0, 5),
+    log: [`Collected ${state.roomEvent.reward} gold.${itemText}`, ...state.log].slice(0, 5),
   };
+}
+
+function useItem(state: GameState, item: ItemId): GameState {
+  if (state.phase !== "combat") return state;
+  if (state.items[item] <= 0) return pushLog(state, "No item left.");
+  const selectedHero = state.party.find((hero) => hero.id === state.selectedHero);
+
+  if (item === "healthPotion") {
+    if (!selectedHero || selectedHero.hp <= 0) return pushLog(state, "Pick a living raider for the health potion.");
+    if (selectedHero.hp >= selectedHero.maxHp) return pushLog(state, `${selectedHero.name} is already healthy.`);
+    const amount = Math.ceil(selectedHero.maxHp * 0.6);
+    return consumeItem(
+      addFloat(
+        updateHero(state, selectedHero.id, { hp: clamp(selectedHero.hp + amount, 0, selectedHero.maxHp) }),
+        `+${amount} hp`,
+        "party",
+      ),
+      item,
+      `${selectedHero.name} drinks a health potion.`,
+    );
+  }
+
+  if (item === "auraCharm") {
+    if (state.aura >= state.maxAura) return pushLog(state, "Aura is already full.");
+    const amount = Math.ceil(state.maxAura * 0.55);
+    return consumeItem(
+      addFloat({ ...state, aura: clamp(state.aura + amount, 0, state.maxAura) }, `+${amount} aura`, "center"),
+      item,
+      "The aura charm snaps awake.",
+    );
+  }
+
+  if (item === "revivePotion") {
+    if (!selectedHero || selectedHero.hp > 0) return pushLog(state, "Pick a fallen raider for the revive potion.");
+    const hp = Math.max(1, Math.ceil(selectedHero.maxHp * 0.5));
+    return consumeItem(
+      addFloat(updateHero(state, selectedHero.id, { hp }), `revived +${hp} hp`, "party"),
+      item,
+      `${selectedHero.name} gets back up.`,
+    );
+  }
+
+  if (item === "manaFlask") {
+    if (state.mana >= state.maxMana) return pushLog(state, "Mana is already full.");
+    const amount = Math.ceil(state.maxMana * 0.65);
+    return consumeItem(
+      addFloat({ ...state, mana: clamp(state.mana + amount, 0, state.maxMana) }, `+${amount} mana`, "center"),
+      item,
+      "The mana flask hums empty.",
+    );
+  }
+
+  if (!selectedHero || selectedHero.hp <= 0) return pushLog(state, "Pick a living raider for bloodlust.");
+  if (selectedHero.charge >= SPECIAL_CHARGE_MAX) return pushLog(state, `${selectedHero.name} is already charged.`);
+  return consumeItem(
+    addFloat(updateHero(state, selectedHero.id, { charge: SPECIAL_CHARGE_MAX }), "SP full", "party"),
+    item,
+    `${selectedHero.name} is ready to explode.`,
+  );
 }
 
 function tickHeroes(state: GameState, dt: number): GameState {
@@ -683,6 +786,25 @@ function buyShopService(state: GameState, service: ShopServiceId): GameState {
   );
 }
 
+function buyItem(state: GameState, item: ItemId): GameState {
+  if (state.phase !== "shop") return state;
+  const cost = shopItemCost(item, state.floor);
+  if (state.gold < cost) return pushLog(state, "Not enough gold.");
+  if (itemCount(state.items) >= MAX_ITEMS) return pushLog(state, "Item pouch is full.");
+  return pushLog(
+    {
+      ...state,
+      gold: state.gold - cost,
+      items: addItems(state.items, [item]),
+      runStats: {
+        ...state.runStats,
+        goldSpent: state.runStats.goldSpent + cost,
+      },
+    },
+    `Bought ${ITEM_LABELS[item]}.`,
+  );
+}
+
 export function upgradeCost(upgrade: UpgradeId, level: number) {
   const base: Record<UpgradeId, number> = {
     attackPower: 13,
@@ -702,6 +824,17 @@ export function upgradeCost(upgrade: UpgradeId, level: number) {
 export function shopServiceCost(service: ShopServiceId, floor: number) {
   if (service === "healAll") return 10 + floor * 2;
   return 18 + floor * 3;
+}
+
+export function shopItemCost(item: ItemId, floor: number) {
+  const base: Record<ItemId, number> = {
+    healthPotion: 9,
+    auraCharm: 10,
+    revivePotion: 16,
+    manaFlask: 9,
+    bloodlustPotion: 14,
+  };
+  return base[item] + Math.floor(floor * 1.4);
 }
 
 function battleReward(floor: number) {
@@ -739,6 +872,51 @@ function storyForFloor(floor: number) {
     },
   ];
   return stories[(floor - 1) % stories.length];
+}
+
+function rollChestReward(floor: number): { gold: number; items: ItemId[]; jackpot: boolean } {
+  const baseGold = Math.max(1, Math.round(battleReward(floor) * CHEST_REWARD_MULTIPLIER));
+  const roll = Math.random();
+  if (roll < 0.08) {
+    return {
+      gold: Math.round(baseGold * 2.4),
+      items: [randomItem(), randomItem(), randomItem(), randomItem()],
+      jackpot: true,
+    };
+  }
+  if (roll < 0.38) {
+    return {
+      gold: Math.round(baseGold * 1.25),
+      items: [randomItem()],
+      jackpot: false,
+    };
+  }
+  if (roll < 0.58) {
+    return {
+      gold: Math.round(baseGold * 1.55),
+      items: Math.random() < 0.35 ? [randomItem()] : [],
+      jackpot: false,
+    };
+  }
+  return {
+    gold: baseGold,
+    items: [],
+    jackpot: false,
+  };
+}
+
+function randomItem(): ItemId {
+  const weighted: ItemId[] = [
+    "healthPotion",
+    "healthPotion",
+    "auraCharm",
+    "auraCharm",
+    "manaFlask",
+    "manaFlask",
+    "bloodlustPotion",
+    "revivePotion",
+  ];
+  return weighted[Math.floor(Math.random() * weighted.length)];
 }
 
 function upgradeHeroHp(state: GameState, heroId: HeroId, amount: number): GameState {
@@ -929,6 +1107,55 @@ function spendRecoveryGold(state: GameState, cost: number): RunStats {
     goldSpent: state.runStats.goldSpent + cost,
     recoveryServices: state.runStats.recoveryServices + 1,
   };
+}
+
+function consumeItem(state: GameState, item: ItemId, line: string): GameState {
+  return pushLog(
+    {
+      ...state,
+      items: {
+        ...state.items,
+        [item]: Math.max(0, state.items[item] - 1),
+      },
+    },
+    line,
+  );
+}
+
+function createEmptyItems(): Record<ItemId, number> {
+  return {
+    healthPotion: 0,
+    auraCharm: 0,
+    revivePotion: 0,
+    manaFlask: 0,
+    bloodlustPotion: 0,
+  };
+}
+
+function addItems(current: Record<ItemId, number>, items: ItemId[]): Record<ItemId, number> {
+  const next = { ...current };
+  let slots = MAX_ITEMS - itemCount(next);
+  for (const item of items) {
+    if (slots <= 0) break;
+    next[item] += 1;
+    slots -= 1;
+  }
+  return next;
+}
+
+export function itemCount(items: Record<ItemId, number>) {
+  return Object.values(items).reduce((total, count) => total + count, 0);
+}
+
+function itemListLabel(items: ItemId[]) {
+  const counts = items.reduce<Record<ItemId, number>>((acc, item) => {
+    acc[item] += 1;
+    return acc;
+  }, createEmptyItems());
+  return (Object.entries(counts) as [ItemId, number][])
+    .filter(([, count]) => count > 0)
+    .map(([item, count]) => `${ITEM_LABELS[item]}${count > 1 ? ` x${count}` : ""}`)
+    .join(", ");
 }
 
 function ageFloats(state: GameState, dt: number): GameState {

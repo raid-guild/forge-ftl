@@ -2,10 +2,15 @@
 
 import { type CSSProperties, useEffect, useReducer, useRef, useState } from "react";
 import {
+  ITEM_LABELS,
+  ITEM_NOTES,
+  MAX_ITEMS,
   SPECIAL_CHARGE_MAX,
   TASK_LABELS,
   createInitialState,
+  itemCount,
   reducer,
+  shopItemCost,
   shopServiceCost,
   specialForHero,
   upgradeLabel,
@@ -15,6 +20,7 @@ import {
   type GameState,
   type HeroId,
   type Hero,
+  type ItemId,
   type RoomEvent,
   type RunStats,
   type ShopServiceId,
@@ -40,6 +46,15 @@ const TASK_HOTKEY_LABELS: Record<Task, string> = {
   "repair-aura": "R",
 };
 const SPECIAL_HOTKEY_LABEL = "S";
+const SHOP_ITEMS: ItemId[] = ["healthPotion", "auraCharm", "manaFlask", "bloodlustPotion", "revivePotion"];
+const COMBAT_ITEMS: ItemId[] = ["healthPotion", "auraCharm", "revivePotion", "manaFlask", "bloodlustPotion"];
+const ITEM_ICON: Record<ItemId, string> = {
+  healthPotion: "HP",
+  auraCharm: "AU",
+  revivePotion: "RV",
+  manaFlask: "MP",
+  bloodlustPotion: "SP",
+};
 type SoundId =
   | "attack"
   | "auraHit"
@@ -181,6 +196,7 @@ export default function CaravanGame() {
   const [sfxLoaded, setSfxLoaded] = useState(false);
   const [musicEnabled, setMusicEnabled] = useState(true);
   const [musicLoaded, setMusicLoaded] = useState(false);
+  const [cheatsEnabled, setCheatsEnabled] = useState(false);
   const [session, setSession] = useState<PlayerSession>({ authenticated: false, handle: "Stranger" });
   const [leaderboard, setLeaderboard] = useState<Leaderboard>({ personalBest: null, top: [] });
   const [summary, setSummary] = useState<RunSummary | null>(null);
@@ -206,6 +222,11 @@ export default function CaravanGame() {
 
   useEffect(() => {
     void refreshShellData();
+  }, []);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    setCheatsEnabled(params.get("cheats") === "1" || params.get("debug") === "1");
   }, []);
 
   useEffect(() => {
@@ -525,7 +546,7 @@ export default function CaravanGame() {
 
   return (
     <main className="game-shell">
-      <TopBar state={state} />
+      <TopBar cheatsEnabled={cheatsEnabled} dispatch={dispatch} onCommandSound={playSfx} state={state} />
       <section className="battlefield" data-phase={state.phase}>
         <PartyPanel state={state} dispatch={dispatch} onCommandSound={playSfx} />
         <CenterStage
@@ -829,14 +850,47 @@ function bestUpgrade(upgrades: GameState["upgrades"]) {
   return level > 0 ? `${upgradeLabel(upgrade)} ${level}` : "None";
 }
 
-function TopBar({ state }: { state: GameState }) {
+function TopBar({
+  cheatsEnabled,
+  dispatch,
+  onCommandSound,
+  state,
+}: {
+  cheatsEnabled: boolean;
+  dispatch: React.Dispatch<Parameters<typeof reducer>[1]>;
+  onCommandSound: (sound: SoundId) => void;
+  state: GameState;
+}) {
   return (
     <header className="top-bar">
       <strong>Aura {Math.ceil(state.aura)}/{state.maxAura}</strong>
       <span>Mana {Math.floor(state.mana)}/{state.maxMana}</span>
       <span>Floor {state.floor}/{state.maxFloor}</span>
       <span>Gold {state.gold}</span>
+      <span>Items {itemCount(state.items)}/{MAX_ITEMS}</span>
       <span>Score {state.score}</span>
+      {cheatsEnabled && (
+        <span className="cheat-tools">
+          <button
+            type="button"
+            onClick={() => {
+              onCommandSound("select");
+              dispatch({ type: "debug-room", room: "chest" });
+            }}
+          >
+            Chest
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              onCommandSound("select");
+              dispatch({ type: "debug-room", room: "combat" });
+            }}
+          >
+            Combat
+          </button>
+        </span>
+      )}
     </header>
   );
 }
@@ -1145,6 +1199,13 @@ function CenterStage({
               <kbd className="key-hint">({SPECIAL_HOTKEY_LABEL})</kbd>
             </button>
           </div>
+          <ItemStrip
+            disabled={combatIntroActive}
+            onCommandSound={onCommandSound}
+            selected={selected}
+            state={state}
+            dispatch={dispatch}
+          />
         </div>
       )}
       {state.phase === "room-clear" && (
@@ -1306,6 +1367,58 @@ function effectSlot(effect: CombatEffect, state: GameState) {
   return 0;
 }
 
+function ItemStrip({
+  disabled,
+  dispatch,
+  onCommandSound,
+  selected,
+  state,
+}: {
+  disabled: boolean;
+  dispatch: React.Dispatch<Parameters<typeof reducer>[1]>;
+  onCommandSound: (sound: SoundId) => void;
+  selected: Hero | undefined;
+  state: GameState;
+}) {
+  if (itemCount(state.items) === 0) {
+    return <div className="item-strip item-strip--empty">No items</div>;
+  }
+  return (
+    <div className="item-strip" aria-label="Consumable items">
+      {COMBAT_ITEMS.map((item) => {
+        const count = state.items[item];
+        if (count <= 0) return null;
+        const usable = itemUsable(state, item, selected);
+        return (
+          <button
+            className="item-button"
+            disabled={disabled || !usable}
+            key={item}
+            title={ITEM_NOTES[item]}
+            onClick={() => {
+              onCommandSound(usable ? "shop" : "error");
+              dispatch({ type: "use-item", item });
+            }}
+          >
+            <strong>{ITEM_ICON[item]}</strong>
+            <span>{ITEM_LABELS[item]}</span>
+            <small>x{count}</small>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function itemUsable(state: GameState, item: ItemId, selected: Hero | undefined) {
+  if (state.items[item] <= 0) return false;
+  if (item === "auraCharm") return state.aura < state.maxAura;
+  if (item === "manaFlask") return state.mana < state.maxMana;
+  if (item === "healthPotion") return Boolean(selected && selected.hp > 0 && selected.hp < selected.maxHp);
+  if (item === "revivePotion") return Boolean(selected && selected.hp <= 0);
+  return Boolean(selected && selected.hp > 0 && selected.charge < SPECIAL_CHARGE_MAX);
+}
+
 function EventRoom({
   event,
   dispatch,
@@ -1316,12 +1429,17 @@ function EventRoom({
   onCommandSound: (sound: SoundId) => void;
 }) {
   if (!event) return null;
+  if (event.type === "chest") {
+    return <ChestEventRoom event={event} dispatch={dispatch} onCommandSound={onCommandSound} />;
+  }
   return (
     <div className="event-room" data-type={event.type}>
-      <span className="event-kicker">{event.type === "chest" ? "Chest Room" : "Story Room"}</span>
+      <span className="event-kicker">Story Room</span>
       <h1>{event.title}</h1>
       <p>{event.body}</p>
-      <div className="event-reward">{event.reward} gold</div>
+      <div className="event-reward">
+        <strong>{event.reward} gold</strong>
+      </div>
       <button
         className="primary-command"
         onClick={() => {
@@ -1329,10 +1447,156 @@ function EventRoom({
           dispatch({ type: "claim-room" });
         }}
       >
-        {event.type === "chest" ? "Take Loot" : "Continue"}
+        Continue
       </button>
     </div>
   );
+}
+
+function ChestEventRoom({
+  event,
+  dispatch,
+  onCommandSound,
+}: {
+  event: RoomEvent;
+  dispatch: React.Dispatch<Parameters<typeof reducer>[1]>;
+  onCommandSound: (sound: SoundId) => void;
+}) {
+  const [reveal, setReveal] = useState<"closed" | "spinning" | "revealed">("closed");
+  const [tick, setTick] = useState(0);
+  const soundRef = useRef(onCommandSound);
+  const items = event.items ?? [];
+
+  useEffect(() => {
+    soundRef.current = onCommandSound;
+  }, [onCommandSound]);
+
+  useEffect(() => {
+    setReveal("closed");
+    setTick(0);
+  }, [event.title, event.reward, event.jackpot]);
+
+  useEffect(() => {
+    if (reveal !== "spinning") return;
+    const steps = event.jackpot ? 12 : 7;
+    const interval = event.jackpot ? 230 : 210;
+    const timers = Array.from({ length: steps }, (_, index) =>
+      window.setTimeout(() => {
+        setTick(index + 1);
+        soundRef.current("shop");
+      }, 180 + index * interval),
+    );
+    timers.push(
+      window.setTimeout(() => {
+        soundRef.current(event.jackpot ? "victory" : "shop");
+        setReveal("revealed");
+      }, 180 + steps * interval + 220),
+      window.setTimeout(() => {
+        setReveal("revealed");
+      }, 180 + steps * interval + 1100),
+    );
+    return () => timers.forEach(window.clearTimeout);
+  }, [event.jackpot, reveal]);
+
+  const openChest = () => {
+    onCommandSound("select");
+    setReveal("spinning");
+  };
+
+  return (
+    <div className="event-room chest-room" data-jackpot={event.jackpot ?? false} data-reveal={reveal} data-type="chest">
+      <span className="event-kicker">{event.jackpot ? "Jackpot Possible" : "Chest Room"}</span>
+      <h1>{reveal === "revealed" ? event.title : "Suspicious Chest"}</h1>
+      <p>{reveal === "revealed" ? event.body : "The latch clicks. Something inside is deciding how dramatic it wants to be."}</p>
+
+      <div className="chest-reel" aria-live="polite">
+        <span data-active={reveal === "spinning" && tick % 3 === 0}>Gold</span>
+        <span data-active={reveal === "spinning" && tick % 3 === 1}>Potion</span>
+        <span data-active={reveal === "spinning" && tick % 3 === 2}>{event.jackpot ? "Jackpot" : "Loot"}</span>
+      </div>
+
+      {reveal === "revealed" ? (
+        <div className="chest-results" data-jackpot={event.jackpot ?? false}>
+          {event.jackpot && (
+            <div className="confetti-field chest-confetti" aria-hidden="true">
+              {Array.from({ length: 18 }, (_, index) => (
+                <span key={index} style={{ "--i": index } as CSSProperties} />
+              ))}
+            </div>
+          )}
+          <div className="chest-result-card chest-result-card--gold" style={{ "--reveal-index": 0 } as CSSProperties}>
+            <span>Gold</span>
+            <strong>{event.reward}</strong>
+          </div>
+          {items.length > 0 ? (
+            itemRewardEntries(items).map(([item, count], index) => (
+              <div className="chest-result-card" key={item} style={{ "--reveal-index": index + 1 } as CSSProperties}>
+                <span>{ITEM_LABELS[item]}</span>
+                <strong>{count > 1 ? `x${count}` : ITEM_ICON[item]}</strong>
+              </div>
+            ))
+          ) : (
+            <div className="chest-result-card" style={{ "--reveal-index": 1 } as CSSProperties}>
+              <span>Bonus</span>
+              <strong>Gold</strong>
+            </div>
+          )}
+          {event.jackpot && (
+            <div
+              className="chest-result-card chest-result-card--jackpot"
+              style={{ "--reveal-index": itemRewardEntries(items).length + 1 } as CSSProperties}
+            >
+              <span>Jackpot</span>
+              <strong>4 Items</strong>
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="chest-closed" aria-hidden="true">
+          <span />
+        </div>
+      )}
+
+      <button
+        className="primary-command"
+        disabled={reveal === "spinning"}
+        onClick={() => {
+          if (reveal !== "revealed") {
+            openChest();
+            return;
+          }
+          onCommandSound("shop");
+          dispatch({ type: "claim-room" });
+        }}
+      >
+        {reveal === "closed" ? "Open Chest" : reveal === "spinning" ? "Rolling..." : "Take Loot"}
+      </button>
+    </div>
+  );
+}
+
+function itemRewardLabel(items: ItemId[]) {
+  return itemRewardEntries(items)
+    .map(([item, count]) => `${ITEM_LABELS[item]}${count > 1 ? ` x${count}` : ""}`)
+    .join(" · ");
+}
+
+function itemRewardEntries(items: ItemId[]): [ItemId, number][] {
+  const counts = items.reduce<Record<ItemId, number>>(
+    (acc, item) => ({
+      ...acc,
+      [item]: acc[item] + 1,
+    }),
+    {
+      healthPotion: 0,
+      auraCharm: 0,
+      revivePotion: 0,
+      manaFlask: 0,
+      bloodlustPotion: 0,
+    },
+  );
+  return (Object.entries(counts) as [ItemId, number][])
+    .filter(([, count]) => count > 0);
 }
 
 function EventClearRoom({
@@ -1432,6 +1696,33 @@ function Shop({
             })}
           </div>
         </section>
+        <section className="shop-section">
+          <h2>Items</h2>
+          <p className="shop-section-note">Pouch {itemCount(state.items)}/{MAX_ITEMS}</p>
+          <div className="shop-grid">
+            {SHOP_ITEMS.map((item) => {
+              const cost = shopItemCost(item, state.floor);
+              const pouchOpen = itemCount(state.items) < MAX_ITEMS;
+              return (
+                <ShopButton
+                  key={item}
+                  label={ITEM_LABELS[item]}
+                  note={ITEM_NOTES[item]}
+                  value={state.items[item]}
+                  valueLabel={`Have ${state.items[item]}`}
+                  cost={cost}
+                  affordable={state.gold >= cost}
+                  available={pouchOpen}
+                  unavailableLabel="pouch full"
+                  onClick={() => {
+                    onCommandSound("shop");
+                    dispatch({ type: "buy-item", item });
+                  }}
+                />
+              );
+            })}
+          </div>
+        </section>
         {SHOP_GROUPS.map((group) => (
           <section className="shop-section" key={group.title}>
             <h2>{group.title}</h2>
@@ -1478,6 +1769,8 @@ function ShopButton({
   cost,
   affordable,
   available = true,
+  unavailableLabel = "not needed",
+  valueLabel,
   onClick,
 }: {
   label: string;
@@ -1486,6 +1779,8 @@ function ShopButton({
   cost: number;
   affordable: boolean;
   available?: boolean;
+  unavailableLabel?: string;
+  valueLabel?: string;
   onClick: () => void;
 }) {
   const disabled = !available || !affordable;
@@ -1494,8 +1789,8 @@ function ShopButton({
       <strong>{label}</strong>
       <small>{note}</small>
       <span>
-        {value === null ? "" : `Lv ${value} · `}
-        {cost}g{!available ? " · not needed" : affordable ? "" : " · need more"}
+        {value === null ? "" : `${valueLabel ?? `Lv ${value}`} · `}
+        {cost}g{!available ? ` · ${unavailableLabel}` : affordable ? "" : " · need more"}
       </span>
     </button>
   );
